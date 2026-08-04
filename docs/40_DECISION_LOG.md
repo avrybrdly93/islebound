@@ -129,6 +129,20 @@ Append-only record of architecturally or design-significant decisions: what was 
 **Context:** accounts are the largest security/scope cliff available; behavioural analytics conflicts with the project's stance; public social spaces require moderation staffing.
 **Consequences:** cross-device saves are manual export/import at 1.0; the harassment surface is structurally near zero.
 
+## 0021 — Subdomain hosting, not a subpath under avesstudios.com
+**Status:** accepted
+**Context:** the intended URL was `avesstudios.com/islebound`, but avesstudios.com is hosted on Vercel/Netlify. Cloudflare Pages attaches custom domains at a hostname, never a path, so a subpath requires proxying the game through the main site's host.
+**Decision:** the game is served from `islebound.avesstudios.com` (a CNAME to Cloudflare Pages). `avesstudios.com/islebound` becomes a landing page on the existing site with a Play link.
+**Alternatives:** proxying via Vercel/Netlify rewrites (throws away Cloudflare's unlimited bandwidth — the reason it was chosen in `30` §1 — and re-inherits Vercel Hobby's commercial-use prohibition; ~6,500 first-loads/month before the 100 GB free cap); moving DNS to Cloudflare plus a Worker on `avesstudios.com/islebound*` (works, but adds a moving part to a one-person operator's incident surface for a cosmetic URL).
+**Consequences:** the game gets its own origin, so IndexedDB saves cannot be squeezed out of quota by anything else deployed under avesstudios.com — which matters given how much of `23` exists to protect saves. Marketing URL and artefact URL differ.
+
+## 0022 — Trunk-based development, single environment
+**Status:** accepted
+**Context:** `30` was originally written with staging and production tiers, which suits a launched game with players. There are no players until 1.0, and the operator is one person.
+**Decision:** `main` is production, deployed on every merge. No staging tier, no tag-triggered deploys. Tags mark phase completions as records only. PRs on `phase-N/*` branches retain the CI gate and per-PR preview URLs.
+**Alternatives:** keeping two Pages projects (a second environment to maintain and reason about, for a benefit that does not exist pre-launch).
+**Consequences:** nothing catches a change that passes CI and the smoke test but is subtly wrong until it is live — acceptable with no players, not acceptable after 1.0. Mitigations are the blocking Playwright smoke test and Cloudflare's instant rollback. **Revisit at 1.0**: adding a `release` branch and a second Pages project is cheap then and is in the Icebox.
+
 ---
 
-*(new decisions append below; next number: 0021)*
+*(new decisions append below; next number: 0023)*
