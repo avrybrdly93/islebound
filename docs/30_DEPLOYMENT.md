@@ -65,30 +65,32 @@ Source maps are generated and uploaded to the error reporter, but **not** served
 
 ## 5. Client deployment workflow
 
-`.github/workflows/deploy-client.yml`:
+`.github/workflows/deploy.yml`:
 
 ```
-on: push to main (staging) | release tag (production)
+on: push to main
 steps:
   - checkout, setup pnpm + node 22, install
   - pnpm ci:quick   (typecheck, lint, unit)
   - pnpm build
   - pnpm check:bundle
   - upload source maps to error reporter
-  - deploy to Cloudflare Pages (staging or production project)
+  - deploy to Cloudflare Pages (production)
   - smoke test the deployed URL with Playwright (boot + 120 frames)
   - on smoke failure: automatic rollback to the previous deployment
 ```
 
-Cloudflare Pages keeps every deployment; rollback is a one-click (or one-API-call) operation and takes effect globally in seconds. **Rollback is the primary incident response.**
+Trunk-based: `main` is production. There is no staging environment and no tag-triggered deploy. Agents work on `phase-N/*` branches and open PRs, which preserves the two things that matter — the CI gate and a playable preview URL — without a second environment to maintain. Cloudflare Pages creates a preview deployment per PR automatically on the same project.
+
+Cloudflare Pages keeps every deployment; rollback is a one-click (or one-API-call) operation and takes effect globally in seconds. **Rollback is the primary incident response**, and with no staging tier it is the only one — which is why the smoke test is a blocking step rather than a notification.
 
 ## 6. Versioning and releases
 
 - Semantic-ish: `0.MINOR.PATCH` during development; `1.0.0` at launch.
-- A release is a git tag `v0.7.0` plus a GitHub Release with notes generated from conventional commits and hand-edited for players.
+- A release is a git tag `v0.7.0` marking a phase completion, plus a GitHub Release with notes generated from conventional commits and hand-edited for players. **Tags are records, not deploy triggers** — every merge to `main` is already live.
 - The build embeds `__APP_VERSION__` and `__COMMIT_SHA__`; both are shown in the settings screen and attached to error reports.
-- **Save compatibility is checked at release time**: the release checklist includes loading a save from the previous release and from the oldest supported version.
-- Players are notified of an update by a polling check of `manifest.json` every 10 minutes; a gentle "a new version is available — reload when you're ready" toast, never a forced reload mid-session.
+- Save compatibility is checked **at every phase boundary** rather than at release time: load a save from the previous phase tag and from the oldest supported version. Because deploys are continuous, this check lives in the phase-closing checklist in `tasks/phase_N_*.md`.
+- Players are notified of an update by a polling check of `manifest.json` every 10 minutes; a gentle "a new version is available — reload when you're ready" toast, never a forced reload mid-session. This matters more under continuous deploy than it would with staged releases, since a player mid-session will see new versions ship often.
 
 ## 7. Server deployment (Phase 7)
 
@@ -117,19 +119,23 @@ steps:
 - **Server metrics:** rooms alive, players connected, tick duration p99, bandwidth per player, error rate. A simple `/metrics` endpoint plus Fly's built-in dashboards.
 - Alerts: server error rate > 1%, tick p99 > 25 ms, health check failing, backup job failure.
 
-## 9. Release checklist
+## 9. Phase-closing checklist
+
+Runs at every phase boundary. There is no separate release gate — `main` is continuously deployed, so this checklist is what "shipping" means here.
 
 ```
 - [ ] All phase tasks closed; CURRENT_TASK.md shows no blockers
-- [ ] Full CI green, including nightly soak from last night
+- [ ] Full CI green, including last night's soak
+- [ ] The phase proof from 03_FEATURE_ROADMAP.md demonstrably works, with evidence
 - [ ] Manual playtest checklist for the phase completed
-- [ ] Save compatibility verified from previous release and oldest supported
+- [ ] Save compatibility verified from the previous phase tag and the oldest supported version
 - [ ] Bundle size and bench within budget
 - [ ] Visual goldens reviewed
-- [ ] Release notes written for players, not for developers
-- [ ] Staging soaked for 24 h with no new errors
+- [ ] Live smoke test passing against the production URL
 - [ ] Rollback verified: previous deployment still restorable
-- [ ] DEVELOPMENT_LOG.md release entry added
+- [ ] Release notes written for players, not for developers
+- [ ] Phase retro and release entry added to 34_DEVELOPMENT_LOG.md
+- [ ] Tag pushed: phase-N-complete
 ```
 
 ## 10. Implementation steps
