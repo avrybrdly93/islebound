@@ -199,11 +199,11 @@ Current phase: **Phase 0 — Foundation**
 
 ### BL-020 — Cloudflare Pages deployment with PR previews
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-019 · **Docs:** 30
-- **Description:** Pages project, `_headers` with the CSP from `30` §4, staging deploy on merge to main, and automatic preview deployments per PR.
+- **Description:** Pages project, custom domain `islebound.avesstudios.com`, `_headers` with the CSP from `30` §4, deploy on merge to main, and automatic preview deployments per PR.
 - **Acceptance criteria:**
   - [ ] A PR produces a clickable preview URL
   - [ ] Headers verified on the deployed site by an automated test
-  - [ ] Staging updates on every merge
+  - [ ] `main` deploys to production on every merge, with the smoke test blocking
 
 ### BL-021 — Root documentation files
 - **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** all
