@@ -33,7 +33,7 @@ The 10-minute table from `docs/02` §7 tuned against real strangers (≥3 sessio
 Adaptive quality stepping; texture/bundle budgets enforced at final content; LOD tuning on the worst-case fixture; the frame-budget CI gate flips from warn to block (`docs/06` §5). Exit: the contract holds on all three real-device passes; nightly soak clean for a week.
 
 ### M6.8 — Ship
-Title screen, save-slot UI, photo mode, error boundary + Sentry with scrubbing, update toast, release notes, the full checklist from `docs/30` §9, production deploy, tag `v1.0.0`. Exit: the release checklist, honestly.
+Title screen, save-slot UI, photo mode, error boundary + Sentry with scrubbing, update toast, release notes, the full phase-closing checklist from `docs/30` §9, tag `v1.0.0`. Exit: the checklist, honestly. Note that "ship" here means the last merge to `main` before the tag — the game has been continuously deployed since Phase 0.
 
 ## Acceptance criteria for closing the phase
 
