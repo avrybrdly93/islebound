@@ -27,7 +27,7 @@ Canvas shell, `WebGLRenderer` per `docs/08` §9, grey-box scene, capability dete
 The headless sim harness (`pnpm sim`) with `worldHash()`, Vitest, Playwright with the `__game` hook, the sim-purity checker, bundle budget check. Exit: `pnpm sim --ticks 20000 --assert-hash` deterministic across runs; boot smoke test green headless.
 
 ### M0.6 — CI and deployment (BL-019, BL-020)
-The four CI jobs within their time budgets; Cloudflare Pages with per-PR preview URLs, staging on merge, CSP headers verified. Exit: a PR shows a clickable preview; `quick` job < 3 min.
+The four CI jobs within their time budgets; Cloudflare Pages with per-PR preview URLs, production deploy on merge to `main`, CSP headers verified. Exit: a PR shows a clickable preview; `quick` job < 3 min; a merge to `main` reaches `islebound.avesstudios.com`.
 
 ## Acceptance criteria for closing the phase
 
