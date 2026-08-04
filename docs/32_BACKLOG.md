@@ -45,15 +45,6 @@ Current phase: **Phase 0 — Foundation**
 
 ## Ready — Phase 0: Foundation
 
-### BL-001 — Initialise the pnpm workspace and package scaffolding
-- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** 05, 06
-- **Description:** Create the monorepo skeleton: `packages/client`, `packages/shared`, root `pnpm-workspace.yaml`, `tsconfig.base.json` with the compiler options from `07_TYPESCRIPT_GUIDELINES.md` §1, and path aliases.
-- **Acceptance criteria:**
-  - [ ] `pnpm install` succeeds from a clean clone
-  - [ ] `pnpm -r typecheck` passes on empty packages
-  - [ ] Aliases `@core/*`, `@sim/*`, `@render/*`, `@ui/*`, `@content/*` resolve in both Vite and `tsc`
-  - [ ] `packages/server` is present with only a README stating it activates in Phase 7
-
 ### BL-002 — Configure ESLint, Prettier, and the boundary rules
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-001 · **Docs:** 05, 06
 - **Description:** Flat ESLint config with `@typescript-eslint` strict-type-checked, `eslint-plugin-boundaries` encoding the import-direction table from `04` §5, `eslint-plugin-import`, and the custom rules banning `Math.random`, `dangerouslySetInnerHTML`, and `new THREE.*` inside `update*/sync*/step*` functions.
@@ -321,5 +312,9 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-001 — Initialise the pnpm workspace and package scaffolding
+- **Completed:** 2026-08-04 · **PR:** —
+- pnpm workspace (`packages/client`, `packages/shared`, `packages/server` README-only), `tsconfig.base.json` with the `07` §1 compiler options and the five path aliases, hand-configured Vite aliases mirroring them. See `34_DEVELOPMENT_LOG.md` for detail.
 
 *(append here with date and PR link; oldest at the bottom)*
