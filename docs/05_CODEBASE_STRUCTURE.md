@@ -10,7 +10,7 @@ Purpose: the canonical file and folder layout, naming conventions, and where new
 halcyon/
 ├── .github/
 │   ├── AI_DEVELOPMENT_WORKFLOW.md
-│   └── workflows/ci.yml, deploy-client.yml, deploy-server.yml
+│   └── workflows/ci.yml, deploy.yml
 ├── docs/                       # everything in this documentation set
 ├── tasks/                      # phase task lists
 ├── packages/
