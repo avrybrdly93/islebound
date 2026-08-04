@@ -140,13 +140,13 @@ Runs at every phase boundary. There is no separate release gate — `main` is co
 
 ## 10. Implementation steps
 
-1. Cloudflare Pages project, custom domain, `_headers`, preview deployments per PR.
-2. `deploy-client.yml` with staging on merge.
+1. Cloudflare Pages project, custom domain `islebound.avesstudios.com`, `_headers`, preview deployments per PR.
+2. `deploy.yml` on push to `main`: build, bundle check, deploy, smoke test, auto-rollback on failure.
 3. Bundle budget check and asset validation in CI.
 4. Sentry integration + source map upload + PII scrubbing.
 5. Version embedding and the settings display.
 6. Update-available polling and the toast.
-7. Production tag workflow + smoke test + auto-rollback.
+7. Verify rollback manually once, before Phase 1 opens — an untested rollback is not a rollback.
 8. (Phase 7) Dockerfile, Fly app, volumes, health checks, rolling deploys.
 9. (Phase 7) Region routing service and protocol version negotiation.
 10. (Phase 7) SQLite backup to R2 + a documented, rehearsed restore.
