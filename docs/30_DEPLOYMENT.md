@@ -19,9 +19,8 @@ Rejected: Vercel's Hobby tier (prohibits commercial use), Netlify (bandwidth cap
 
 | Env | Branch | URL | Purpose |
 |---|---|---|---|
-| Production | `main` (tagged) | `play.halcyonisle.com` | players |
-| Staging | `main` (every merge) | `staging.halcyonisle.com` | pre-release verification |
-| Preview | any PR | `pr-123.halcyonisle.pages.dev` | review builds, auto-created |
+| Production | `main` | `islebound.avesstudios.com` | players |
+| Preview | any PR | `<hash>.islebound.pages.dev` | review builds, auto-created |
 | Local | — | `localhost:5173` | development |
 
 Preview deployments per PR are the single most useful CI feature for this project: a human can click a link and *play* an agent's change before approving it.
