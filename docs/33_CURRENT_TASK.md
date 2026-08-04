@@ -4,15 +4,13 @@
 
 ---
 
-## Status: `IDLE`
-
-Allowed values: `IDLE` · `IN_PROGRESS` · `BLOCKED` · `AWAITING_REVIEW`
+## Status: IDLE
 
 ## Current task
 
-**None.** The project has not started implementation.
+**None.** BL-001 is complete (see `Recently completed` below and the `34_DEVELOPMENT_LOG.md` entry for the full record).
 
-**Next action for an agent:** read `.github/AI_DEVELOPMENT_WORKFLOW.md`, then `docs/32_BACKLOG.md`, and pick **BL-001**.
+**Next action for an agent:** read `.github/AI_DEVELOPMENT_WORKFLOW.md`, then `docs/32_BACKLOG.md`, and pick **BL-002** (topmost unblocked task in Phase 0's Ready list).
 
 ---
 
@@ -79,4 +77,4 @@ Blockers requiring human input include: any change to `04_TECHNICAL_ARCHITECTURE
 
 | Task | Completed | PR | Notes |
 |---|---|---|---|
-| — | — | — | — |
+| BL-001 | 2026-08-04 | — | pnpm workspace scaffolding; `_scaffold.ts` markers under core/sim/render/ui/content to be deleted by the tasks that fill those dirs |
