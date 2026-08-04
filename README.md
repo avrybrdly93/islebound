@@ -1,4 +1,4 @@
-# Halcyon Isle
+# Islebound
 
 A cozy 3D survival-exploration game that runs in the browser. Wash up on a forgotten island, gather what it gives you, build a home, plant a garden, fish the reef, and slowly piece together who lived there before you. Play alone, or give a friend a join code.
 
