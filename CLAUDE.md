@@ -1,6 +1,6 @@
 # CLAUDE.md — standing context
 
-Halcyon Isle: a browser-based cozy 3D survival-exploration game. Single-player first, drop-in co-op in Phase 7. No combat, no death, no punishing timers.
+Islebound: a browser-based cozy 3D survival-exploration game. Single-player first, drop-in co-op in Phase 7. No combat, no death, no punishing timers.
 
 This file is deliberately short. It points; it does not duplicate. **Read the linked docs.**
 
