@@ -316,6 +316,7 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 - Second island reachable by boat
 - Character customisation beyond outfit colour
 - Mod support
+- Second Pages project on a `release` branch, restoring a staging tier — revisit at 1.0 (see DECISION_LOG 0022)
 
 ---
 
