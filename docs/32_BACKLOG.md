@@ -39,12 +39,6 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-*(empty — one task at a time)*
-
----
-
-## Ready — Phase 0: Foundation
-
 ### BL-002 — Configure ESLint, Prettier, and the boundary rules
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-001 · **Docs:** 05, 06
 - **Description:** Flat ESLint config with `@typescript-eslint` strict-type-checked, `eslint-plugin-boundaries` encoding the import-direction table from `04` §5, `eslint-plugin-import`, and the custom rules banning `Math.random`, `dangerouslySetInnerHTML`, and `new THREE.*` inside `update*/sync*/step*` functions.
@@ -52,6 +46,11 @@ Current phase: **Phase 0 — Foundation**
   - [ ] `pnpm lint` passes on the scaffold
   - [ ] A deliberate violation of each custom rule is caught (a fixture test per rule)
   - [ ] Prettier config matches `06` §2
+- **Claimed:** 2026-08-05 — see `33_CURRENT_TASK.md`
+
+---
+
+## Ready — Phase 0: Foundation
 
 ### BL-003 — Vite app shell with a canvas and a black screen
 - **Phase:** 0 · **Size:** S · **Depends on:** BL-001 · **Docs:** 05, 08
