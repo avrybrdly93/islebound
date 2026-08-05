@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-045**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-047**.
 
 **Task format:**
 
@@ -39,14 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-### BL-002 — Configure ESLint, Prettier, and the boundary rules
-- **Phase:** 0 · **Size:** M · **Depends on:** BL-001 · **Docs:** 05, 06
-- **Description:** Flat ESLint config with `@typescript-eslint` strict-type-checked, `eslint-plugin-boundaries` encoding the import-direction table from `04` §5, `eslint-plugin-import`, and the custom rules banning `Math.random`, `dangerouslySetInnerHTML`, and `new THREE.*` inside `update*/sync*/step*` functions.
-- **Acceptance criteria:**
-  - [ ] `pnpm lint` passes on the scaffold
-  - [ ] A deliberate violation of each custom rule is caught (a fixture test per rule)
-  - [ ] Prettier config matches `06` §2
-- **Claimed:** 2026-08-05 — see `33_CURRENT_TASK.md`
+*(empty — one task at a time)*
 
 ---
 
@@ -202,6 +195,22 @@ Current phase: **Phase 0 — Foundation**
   - [ ] A new agent can go from clone to a passing test run using only the README
   - [ ] `CLAUDE.md` is under 100 lines and points to the detailed docs rather than duplicating them
 
+### BL-045 — Catch `new Vector3()` from named three imports in per-frame paths
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-002 · **Docs:** 06, 08
+- **Description:** BL-002's per-frame allocation ban matches the namespace form the docs use (`new THREE.Vector3()`). A named import (`import { Vector3 } from 'three'; new Vector3()`) is not caught, because `no-restricted-syntax` matches syntax and cannot tell where an identifier came from. Closing the gap needs either a small custom rule with scope analysis or a convention forbidding named three imports.
+- **Acceptance criteria:**
+  - [ ] A fixture using a named three import inside an `update*` function is reported
+  - [ ] The existing namespace-form fixture still passes
+  - [ ] Whichever approach is chosen is recorded in `40_DECISION_LOG.md`
+- **Notes:** Only bites once `render/` has real code; not urgent while `src/render/` is a scaffold marker.
+
+### BL-046 — Add `eslint-plugin-react-hooks` once React lands
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-003 · **Docs:** 06, 24
+- **Description:** `06` §2 names `eslint-plugin-react-hooks` alongside the plugins BL-002 configured. It was deliberately left out: there is no React in the repo until BL-003, and a plugin configured against nothing is a plugin nobody notices is misconfigured. Add it with the React overlay.
+- **Acceptance criteria:**
+  - [ ] `react-hooks/rules-of-hooks` and `react-hooks/exhaustive-deps` active on `.tsx` files
+  - [ ] A fixture violating rules-of-hooks is caught by `pnpm lint:rules`
+
 ---
 
 ## Ready — Phase 1: Player & World (seeded; groom before starting)
@@ -311,6 +320,10 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-002 — Configure ESLint, Prettier, and the boundary rules
+- **Completed:** 2026-08-05 · **PR:** —
+- Flat ESLint config: `@typescript-eslint` strict-type-checked (type-aware), `eslint-plugin-import`, and `eslint-plugin-boundaries` encoding the `04` §5 import-direction table for all nine element types plus the composition root. The three project-specific bans (`Math.random`, `dangerouslySetInnerHTML`, `new THREE.*` in `update*/sync*/step*`) via `no-restricted-syntax`. Prettier config per `06` §2. `tools/check-lint-rules.mjs` + fixtures assert each rule fires with an exact violation count and stays quiet on compliant code, and that the boundary table is genuinely enforced — it was not, until the import resolver was configured. See `34_DEVELOPMENT_LOG.md`.
 
 ### BL-001 — Initialise the pnpm workspace and package scaffolding
 - **Completed:** 2026-08-04 · **PR:** —

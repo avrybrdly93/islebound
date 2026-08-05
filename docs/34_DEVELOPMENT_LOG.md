@@ -98,6 +98,42 @@ What moved to the Icebox, what was promoted out of it, and why.
 
 ---
 
+## 2026-08-05 — BL-002 Configure ESLint, Prettier, and the boundary rules
+
+**Type:** chore
+**Phase:** 0
+**PR:** —
+**Time:** ~2h
+
+### What changed
+Root `eslint.config.js` (flat), `.prettierrc.json` + `.prettierignore`, `tools/check-lint-rules.mjs` with three fixtures under `tools/lint-fixtures/`, and `lint`/`lint:rules`/`format`/`format:check` scripts. Six dev dependencies, no runtime dependencies: `eslint`, `@eslint/js`, `typescript-eslint`, `eslint-plugin-boundaries`, `eslint-plugin-import`, `eslint-import-resolver-typescript`, `eslint-config-prettier`, `prettier`.
+
+The config does three things. `eslint-plugin-boundaries` encodes the `04` §5 import-direction table for all nine element types — including `audio`, `input`, `platform` and `dev`, whose directories do not exist yet, so the first file dropped into one is governed on arrival rather than whenever someone remembers to come back. `core` and `content` are expressed by their *absence* from the policy list, since the default is `disallow`. `sim`'s documented prohibition on `three` and React is an explicit disallow rather than left entirely to the CI grep. Then the three project-specific bans, then the general `@typescript-eslint` strict-type-checked + `eslint-plugin-import` layer.
+
+The three bans use `no-restricted-syntax` rather than a hand-written plugin package: three selectors do not justify a plugin, its build, and its own tests (`35` §5). `dangerouslySetInnerHTML` is banned both as a JSX attribute and as an object property, since props are often built before the JSX. The `new THREE.*` ban covers all four ways a per-frame function gets its name — function declaration, arrow assigned to a `const`, class method, object-literal method.
+
+### Why it was done this way
+`pnpm lint` passing proves the codebase is clean. It cannot prove the *rules* work: a selector that quietly stops matching produces exactly the same silence as compliant code. So each rule has a fixture pairing violations with compliant near-misses, and `tools/check-lint-rules.mjs` asserts an **exact** violation count — an over-broad selector fails as loudly as a dead one. The compliant cases are chosen to be the ones a careless selector would swallow: the seeded-RNG equivalent of `Math.random`, a module-scope scratch object reused per frame, and a `new Map()` inside an `update*` function, which is a different concern this rule has no business claiming. The script imports `RESTRICTED_SYNTAX` from `eslint.config.js` rather than restating it, so the test cannot drift from the shipping definitions.
+
+`pnpm test` (vitest) does not exist until BL-015, which is why the fixture check is a script. When vitest lands it should become a test file and the script should go away.
+
+### Surprises
+- **The boundary rule was decorative and passed silently.** A deliberate `sim → render` import produced *no* error. `eslint-plugin-boundaries` resolves module specifiers through `eslint-plugin-import`'s resolver, and with no resolver configured the `@render/*` alias resolved to nothing — and an unclassified dependency is not a violation, so everything passed. Adding `settings['import/resolver'].typescript` pointing at `tsconfig.base.json` fixed it. This is the reason the fixture harness now also writes a real `sim → render` file into `src/sim/` (and removes it in a `finally`) and asserts the violation is reported: the failure mode here is silence, and silence is what a clean codebase looks like too.
+- **`04` §5's table does not cover the composition root.** `main.ts` (and later `Game.ts`) sits directly in `src/`, belongs to no layer, and by design imports every layer — `05` §2 calls `Game.ts` "composition root — wires every subsystem". Classified as a `boundaries/files` category allowed to import everything, rather than inventing a tenth architectural layer. The docs are not wrong so much as silent; recorded here and in `40_DECISION_LOG.md` rather than edited, since `04` §5 needs human approval to change.
+- **Another ignored build script**, in the same family as BL-001's `esbuild` surprise: `unrs-resolver` (a native dependency of `eslint-import-resolver-typescript` v4) is reported as an ignored build script by pnpm. Resolution works anyway — verified by the boundary violation above being caught — so it was left unapproved rather than added to `onlyBuiltDependencies` for no reason. BL-019 (CI) should confirm the warning stays a warning on a clean CI install.
+- **Prettier over the docs was deliberately declined.** Running `prettier --write .` reflows all 40+ documentation files. `.prettierignore` excludes `docs/`, `tasks/` and root markdown with that reasoning written in, so the formatting scope is code only. Revisit deliberately if it is ever worth the churn.
+
+### Tests
+`pnpm lint:rules`: 3 rule checks + the boundary-table check, all passing. The harness was verified to fail when it should — breaking the `Math.random` selector on purpose turns that one check red and leaves the others green.
+
+Also run clean: `pnpm lint` (whole repo), `prettier --check .`, `pnpm typecheck`, `pnpm build`. `pnpm test`, `pnpm sim --ticks 20000 --assert-hash` and `pnpm check:bundle` do not exist yet (BL-015, BL-014, BL-019) — expected this early in Phase 0.
+
+### Follow-ups
+- **BL-045** — the per-frame allocation ban matches `new THREE.Vector3()` but not `import { Vector3 } from 'three'; new Vector3()`; `no-restricted-syntax` cannot see where an identifier came from.
+- **BL-046** — `eslint-plugin-react-hooks` is named by `06` §2 but was left out: there is no React until BL-003, and a plugin configured against nothing is one nobody notices is misconfigured.
+
+---
+
 ## 2026-08-04 — BL-001 Initialise the pnpm workspace and package scaffolding
 
 **Type:** chore

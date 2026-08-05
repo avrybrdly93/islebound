@@ -143,6 +143,13 @@ Append-only record of architecturally or design-significant decisions: what was 
 **Alternatives:** keeping two Pages projects (a second environment to maintain and reason about, for a benefit that does not exist pre-launch).
 **Consequences:** nothing catches a change that passes CI and the smoke test but is subtly wrong until it is live — acceptable with no players, not acceptable after 1.0. Mitigations are the blocking Playwright smoke test and Cloudflare's instant rollback. **Revisit at 1.0**: adding a `release` branch and a second Pages project is cheap then and is in the Icebox.
 
+## 0023 — The composition root is a boundary category, not an architectural layer
+**Status:** accepted
+**Context:** `04` §5's import-direction table names nine element types and enforces `default: disallow` between them. `main.ts` — and `Game.ts` when it lands — sits directly in `src/`, belongs to none of the nine, and by design imports several of them: `05` §2 calls `Game.ts` the "composition root — wires every subsystem". Under BL-002's boundary config those files matched no element and failed `boundaries/no-unknown-files`.
+**Decision:** classify them as a `boundaries/files` **category** (`composition-root`) permitted to depend on every element type, rather than adding a tenth element type to `04` §5's table.
+**Alternatives:** adding an `app` layer to the table (needs human approval — `04` §5 is a protected section — and invents an architectural layer to describe two files that wire other layers together); exempting `src/*.ts` from `no-unknown-files` (leaves the composition root ungoverned, which is precisely where a stray dependency would hide).
+**Consequences:** the wiring files are allowed to reach everything, deliberately and visibly, while every real layer stays under the table's `default: disallow`. If `src/` ever accumulates files that are *not* composition root, the category silently grants them the same freedom — so keep `src/*.ts` to `main.ts` and `Game.ts`, and revisit if that stops being true.
+
 ---
 
-*(new decisions append below; next number: 0023)*
+*(new decisions append below; next number: 0024)*
