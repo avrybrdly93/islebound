@@ -1,0 +1,14 @@
+node_modules
+dist
+pnpm-lock.yaml
+
+# Lint fixtures are deliberately malformed with respect to our rules; leave
+# them exactly as written so the violation each one encodes stays visible.
+tools/lint-fixtures
+
+# The documentation set is hand-formatted prose with tables and diagrams that
+# Prettier would rewrap; reformatting 40+ docs is not this task's business.
+# Revisit deliberately if the churn ever becomes worth it.
+docs
+tasks
+*.md
