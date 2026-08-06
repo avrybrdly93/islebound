@@ -4,13 +4,41 @@
 
 ---
 
-## Status: IDLE
+## Status: IN_PROGRESS
 
 ## Current task
+**BL-002** — Configure ESLint, Prettier, and the boundary rules
+- **Phase:** 0
+- **Started:** 2026-08-06
+- **Branch:** claude/ecstatic-bohr-ahk3v2
+- **Docs read:** 04 (§3 dependency policy, §5 module boundaries), 05, 06 (§2 style), 07, 29, 35
+- **Estimated size:** M
 
-**None.** BL-001 is complete (see `Recently completed` below and the `34_DEVELOPMENT_LOG.md` entry for the full record).
+### Plan
+1. Dev dependencies only (`04` §3 allows this; no runtime dependency is added): eslint, @eslint/js, typescript-eslint, eslint-plugin-boundaries, eslint-plugin-import, eslint-plugin-react-hooks, prettier, eslint-config-prettier.
+2. `.prettierrc.json` matching `06` §2 exactly: printWidth 100, singleQuote, semi, trailingComma all.
+3. Root flat `eslint.config.js`: typescript-eslint strict-type-checked (type-aware), `eslint-plugin-boundaries` encoding `04` §5's import-direction table verbatim, import plugin, react-hooks, and the three custom bans (`Math.random`, `dangerouslySetInnerHTML`, `new THREE.*` inside `update*`/`sync*`/`step*`), plus the `sim/` purity overrides from `04` §5's hard rule.
+4. Fixture-per-rule check: one deliberately-violating file per custom rule under `tools/lint-fixtures/`, and `tools/check-lint-rules.mjs` running ESLint's Node API over them and asserting the expected rule fires (and only fires where expected).
+5. `pnpm lint`, `pnpm lint:rules`, `pnpm format`, `pnpm format:check` scripts.
 
-**Next action for an agent:** read `.github/AI_DEVELOPMENT_WORKFLOW.md`, then `docs/32_BACKLOG.md`, and pick **BL-002** (topmost unblocked task in Phase 0's Ready list).
+### Progress
+- [ ] Step 1 — deps
+- [ ] Step 2 — prettier config
+- [ ] Step 3 — eslint flat config
+- [ ] Step 4 — fixture checks
+- [ ] Step 5 — scripts + verification
+
+### Decisions made during implementation
+- (recorded as they are made)
+
+### Discovered work (added to backlog, NOT done in this task)
+- (none yet)
+
+### Blockers
+- None
+
+### Notes for the next session
+`pnpm test` does not exist yet (that is BL-015, which depends on BL-004), so BL-002's "a fixture test per rule" is implemented as a standalone Node script rather than a Vitest suite. It should be folded into the Vitest suite when BL-015 lands.
 
 ---
 
