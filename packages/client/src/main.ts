@@ -1,5 +1,5 @@
-import { CORE_MODULE } from '@core/_scaffold';
 import { CONTENT_MODULE } from '@content/_scaffold';
+import { CORE_MODULE } from '@core/_scaffold';
 import { RENDER_MODULE } from '@render/_scaffold';
 import { SIM_MODULE } from '@sim/_scaffold';
 import { UI_MODULE } from '@ui/_scaffold';
