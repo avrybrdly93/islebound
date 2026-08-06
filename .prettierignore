@@ -1,3 +1,18 @@
 node_modules
 dist
 pnpm-lock.yaml
+
+# Prose documentation is NOT formatted by Prettier.
+#
+# Running `prettier --write .` over these reformats all 51 of them (emphasis
+# markers, table padding, list wrapping) in a single 1149-line diff, and several
+# are binding documents that 35_AI_AGENT_RULES.md §4 forbids changing without
+# human approval — docs/00 and docs/04 §3/§5 among them. Reformatting them as a
+# side effect of configuring the formatter is exactly the scope creep §3 rules
+# out.
+#
+# Whether the prose docs should be Prettier-formatted at all is a real question,
+# just not this task's: filed as BL-045.
+docs/
+tasks/
+README.md

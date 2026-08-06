@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-045**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-046**.
 
 **Task format:**
 
@@ -44,14 +44,6 @@ Current phase: **Phase 0 — Foundation**
 ---
 
 ## Ready — Phase 0: Foundation
-
-### BL-002 — Configure ESLint, Prettier, and the boundary rules
-- **Phase:** 0 · **Size:** M · **Depends on:** BL-001 · **Docs:** 05, 06
-- **Description:** Flat ESLint config with `@typescript-eslint` strict-type-checked, `eslint-plugin-boundaries` encoding the import-direction table from `04` §5, `eslint-plugin-import`, and the custom rules banning `Math.random`, `dangerouslySetInnerHTML`, and `new THREE.*` inside `update*/sync*/step*` functions.
-- **Acceptance criteria:**
-  - [ ] `pnpm lint` passes on the scaffold
-  - [ ] A deliberate violation of each custom rule is caught (a fixture test per rule)
-  - [ ] Prettier config matches `06` §2
 
 ### BL-003 — Vite app shell with a canvas and a black screen
 - **Phase:** 0 · **Size:** S · **Depends on:** BL-001 · **Docs:** 05, 08
@@ -281,6 +273,14 @@ Current phase: **Phase 0 — Foundation**
 ### BL-044 — Phase 1 visual regression goldens
 - **Phase:** 1 · **Size:** S · **Depends on:** BL-036, BL-037 · **Docs:** 29
 
+### BL-045 — Decide whether Prettier formats the prose documentation
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-002 · **Docs:** 06, 35
+- **Description:** `docs/`, `tasks/` and `README.md` are in `.prettierignore` today. Running `prettier --write .` over them produces a single 1149-line diff across 51 files (emphasis markers `*x*` → `_x_`, table padding, list wrapping) and touches documents `35` §4 forbids changing without human approval, including `00_PROJECT_VISION.md` and `04` §3/§5. Discovered while landing BL-002: reformatting them as a side effect of configuring the formatter would have been scope creep, so the decision was deferred rather than made silently.
+- **Acceptance criteria:**
+  - [ ] A human decides: format the prose docs, or keep them hand-formatted permanently
+  - [ ] If formatting: it lands as its own commit touching nothing else, with the binding documents' content verified unchanged
+  - [ ] `.prettierignore` and `06` §2 both state the outcome, so the next agent inherits the answer
+
 ---
 
 ## Icebox (good ideas, not now)
@@ -312,6 +312,10 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-002 — Configure ESLint, Prettier, and the boundary rules
+- **Completed:** 2026-08-06 · **PR:** —
+- Flat `eslint.config.js` (typescript-eslint strict-type-checked type-aware, `eslint-plugin-boundaries` v7 `dependencies`/`policies` encoding `04` §5, import, react-hooks, `eslint-config-prettier` last), `.prettierrc.json` matching `06` §2 exactly, and `tools/check-lint-rules.mjs` + six fixtures asserting one deliberate violation per custom rule plus a clean control. The fixture harness immediately caught that `boundaries/dependencies` was never firing — no resolver could classify an extensionless TS import — which `pnpm lint` reported as green throughout. See `34_DEVELOPMENT_LOG.md` for detail.
 
 ### BL-001 — Initialise the pnpm workspace and package scaffolding
 - **Completed:** 2026-08-04 · **PR:** —

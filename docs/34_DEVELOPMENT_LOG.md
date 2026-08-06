@@ -98,6 +98,65 @@ What moved to the Icebox, what was promoted out of it, and why.
 
 ---
 
+## 2026-08-06 — BL-002 Configure ESLint, Prettier, and the boundary rules
+
+**Type:** chore
+**Phase:** 0
+**PR:** —
+**Time:** ~1h
+
+### What changed
+Root flat `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and a per-rule fixture harness (`tools/check-lint-rules.mjs` + six fixtures under `tools/lint-fixtures/`). New scripts: `lint`, `lint:rules`, `format`, `format:check`. Dev dependencies only — no runtime dependency was added (`04` §3).
+
+The ESLint config carries `@typescript-eslint` strict-type-checked (type-aware via `projectService`), `eslint-plugin-boundaries` encoding `04` §5's import-direction table, `eslint-plugin-import`, `eslint-plugin-react-hooks` on `.tsx`, and `eslint-config-prettier` last so the two never disagree about formatting. `04` §5's hard `sim/` rule gets its own override block: no `three`/`react`/rapier imports, no `document`/`window`/`performance` globals. Prettier is `06` §2 verbatim — `printWidth: 100`, `singleQuote`, `semi`, `trailingComma: 'all'`.
+
+The three custom bans are AST selectors under `no-restricted-syntax` rather than a bespoke ESLint plugin: `Math.random` anywhere, `dangerouslySetInnerHTML` as either a JSX attribute or an object property, and `new THREE.*` inside an `update*`/`sync*`/`step*` function across all four ancestor forms (declaration, variable, method, property).
+
+Verified: `pnpm lint` clean on the scaffold, `pnpm lint:rules` 7/7, `pnpm format:check` clean, `pnpm typecheck` clean.
+
+### Why it was done this way
+**Selectors, not a custom plugin.** Three bans of this shape are three selector strings; a plugin would be a package, a rule module, a test harness and a build step for the same result. Fewer moving parts (`35` §5).
+
+**ESLint pinned to ^9.** ESLint 10 installs by default, but `eslint-plugin-import` declares a peer range ending at 9 — and the plugin the boundary rules lean on being unsupported is not a warning worth carrying. Revisit when the plugin ships eslint 10 support.
+
+**boundaries v7 API.** The widely-copied config uses `boundaries/element-types` with a `rules` array; v7 deprecates both in favour of `boundaries/dependencies` with `policies` and object selectors. Written the new way from the start rather than landing deprecation warnings on day one. `default: 'disallow'` means a module added without a policy row fails closed, so the next module cannot quietly get blanket permission.
+
+**Fixtures are linted under synthetic filenames.** The fixture directory is in `ignores` so `pnpm lint` stays green, but an ignored path produces no reports no matter what it contains — so the harness reads each fixture's text and lints it *as* e.g. `packages/client/src/sim/__fixture__.ts`, which is what makes the path-scoped rules match. That instance runs with type-aware rules off: the synthetic paths are in no tsconfig, and every rule under test is purely syntactic, so nothing under test is weakened. `pnpm lint` still enforces the type-aware rules over the real tree.
+
+### Surprises
+**The fixture harness paid for itself before it was even finished: `boundaries/dependencies` was never firing.** `pnpm lint` was green, the config looked right, and the entire `04` §5 import-direction table was decorative. The cause is that neither `eslint-plugin-boundaries` nor `eslint-plugin-import` can resolve an extensionless TypeScript import without a resolver, so every dependency classified as *unknown* and no policy ever applied. `boundaries/no-unknown` was what finally said so. Fixed by adding `eslint-import-resolver-typescript` (dev dependency), which also resolves the `@core`/`@sim`/`@render`/`@ui`/`@content` aliases — the form `CLAUDE.md` says all real imports will take, so without it the table would have stayed decorative through every future task too.
+
+This is the entire argument for BL-002's second acceptance criterion, and it is worth restating for the next agent: **a lint rule that silently stops matching is worse than no rule, because the green check actively tells you that you are protected.** Every rule added from here should arrive with a fixture.
+
+**`prettier --write .` reformats all 51 prose documents.** A 1149-line diff across `docs/`, `tasks/` and `README.md` — emphasis markers `*x*` → `_x_`, table padding, list rewrapping — including `00_PROJECT_VISION.md` and `04` §3/§5, which `35` §4 forbids changing without human approval. Reverted in full and the paths added to `.prettierignore` with the reasoning inline. Filed as **BL-045** for a human to decide; making that call as a side effect of configuring the formatter is exactly the scope creep `35` §3 rules out.
+
+**One adjacent file was changed**, as `35` §3 permits when the task's own acceptance criteria require it: `packages/client/src/main.ts`'s import order, autofixed by `import/order`. It only became a violation once the resolver made the aliases resolvable, and `pnpm lint` passing on the scaffold is BL-002's first acceptance criterion.
+
+### Tests
+`tools/check-lint-rules.mjs`, run via `pnpm lint:rules` — six fixtures plus a control, all passing:
+
+| Check | Rule asserted |
+|---|---|
+| `Math.random` anywhere | `no-restricted-syntax` ×1 |
+| `dangerouslySetInnerHTML` | `no-restricted-syntax` ×1 |
+| `new THREE.*` in `update*`/`sync*` | `no-restricted-syntax` ×2 |
+| `sim/` imports `three` | `no-restricted-imports` ×1 |
+| `sim/` touches `window` | `no-restricted-globals` ×1 |
+| `core/` imports `sim/` | `boundaries/dependencies` ×1 |
+| clean control file | *no rule may fire* |
+
+Two deliberate design points: the `new THREE.*` fixture asserts **two** reports so deleting one selector branch is caught, and the control file fails if *any* rule fires, so a rule that has become over-broad is caught alongside one that has gone silent.
+
+Not a Vitest suite because `pnpm test` does not exist yet (BL-015, blocked on BL-004). Fold it in when that lands.
+
+### Follow-ups
+- **BL-045** (new) — human decision on whether Prettier formats the prose docs.
+- BL-015 should absorb `tools/check-lint-rules.mjs` into the Vitest suite; BL-019 should run `lint` and `lint:rules` in CI.
+- `eslint-plugin-import` gates ESLint at ^9. Revisit the pin when it supports 10.
+- `CLAUDE.md` mentions `tools/check-sim-purity.ts` as a CI check. It does not exist yet; the `sim/` purity half is enforced by lint as of this task, and the standalone script is still owed by a later task.
+
+---
+
 ## 2026-08-04 — BL-001 Initialise the pnpm workspace and package scaffolding
 
 **Type:** chore
