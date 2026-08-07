@@ -10,7 +10,7 @@ No combat. No hunger. No death. Nothing on a timer that can punish you.
 
 ## What this repository is
 
-An experiment in **documentation-first, AI-agent-driven development**. Every architectural decision, system design, content rule and process constraint is written down *before* the code, so that autonomous agents can make hundreds of small, correct, consistent changes over many months without a human re-explaining the project each session.
+An experiment in **documentation-first, AI-agent-driven development**. Every architectural decision, system design, content rule and process constraint is written down _before_ the code, so that autonomous agents can make hundreds of small, correct, consistent changes over many months without a human re-explaining the project each session.
 
 The documentation is not commentary on the code. It is the specification the code is written from, and it is maintained as a first-class deliverable.
 
@@ -71,7 +71,7 @@ Ten **critical tests** (`docs/29_TESTING_STRATEGY.md` §4) protect the propertie
 
 ## How humans steer
 
-- **Reorder `docs/32_BACKLOG.md`.** The ordering *is* the direction; agents take the top task.
+- **Reorder `docs/32_BACKLOG.md`.** The ordering _is_ the direction; agents take the top task.
 - **Close phases.** Agents can complete every task in a phase but cannot declare it done. A phase closes when its one-line proof demonstrably works and the retro is written.
 - **Review PR previews.** Every pull request gets a deployed URL you can actually play before approving.
 - **Approve the things agents cannot decide alone:** vision changes, architecture changes, new dependencies, critical-test changes, anything breaking save compatibility.
@@ -79,31 +79,31 @@ Ten **critical tests** (`docs/29_TESTING_STRATEGY.md` §4) protect the propertie
 
 ## Roadmap
 
-| Phase | Name | Proof |
-|---|---|---|
-| 0 | Foundation | Grey-box scene at 60 fps, green tests, deterministic headless sim |
-| 1 | Player & World | Walk the whole island, watch the sun set |
-| 2 | Resources | Gather into an inventory that survives a reload |
-| 3 | Crafting | Craft a stone axe and fell a tree hands could not |
-| 4 | Building | Build a cabin, reload, remove a wall, get materials back |
-| 5 | Life Simulation | Farm, cook, fish, catalogue, discover |
-| 6 | Polish & Ship | A stranger plays 45 minutes without asking a question |
-| 7 | Multiplayer | A friend joins your island and helps you build |
+| Phase | Name            | Proof                                                             |
+| ----- | --------------- | ----------------------------------------------------------------- |
+| 0     | Foundation      | Grey-box scene at 60 fps, green tests, deterministic headless sim |
+| 1     | Player & World  | Walk the whole island, watch the sun set                          |
+| 2     | Resources       | Gather into an inventory that survives a reload                   |
+| 3     | Crafting        | Craft a stone axe and fell a tree hands could not                 |
+| 4     | Building        | Build a cabin, reload, remove a wall, get materials back          |
+| 5     | Life Simulation | Farm, cook, fish, catalogue, discover                             |
+| 6     | Polish & Ship   | A stranger plays 45 minutes without asking a question             |
+| 7     | Multiplayer     | A friend joins your island and helps you build                    |
 
 Full detail in `docs/03_FEATURE_ROADMAP.md` and `tasks/phase_*.md`.
 
 ## Documentation map
 
-| Range | Contents |
-|---|---|
-| `00`–`03` | Vision, game design, core loop, roadmap |
-| `04`–`07` | Architecture, codebase structure, engineering standards, TypeScript |
-| `08`–`13` | Rendering, three.js, physics, player controller, worldgen, terrain |
-| `14`–`19` | Resources, inventory, crafting, building, farming, fishing |
-| `20`–`23` | Day/night, weather, audio, saves |
-| `24`–`28` | UI/UX, asset pipeline, art direction, animation, performance |
-| `29`–`31` | Testing, deployment, security |
-| `32`–`35` | Backlog, current task, development log, agent rules *(living documents)* |
+| Range     | Contents                                                                          |
+| --------- | --------------------------------------------------------------------------------- |
+| `00`–`03` | Vision, game design, core loop, roadmap                                           |
+| `04`–`07` | Architecture, codebase structure, engineering standards, TypeScript               |
+| `08`–`13` | Rendering, three.js, physics, player controller, worldgen, terrain                |
+| `14`–`19` | Resources, inventory, crafting, building, farming, fishing                        |
+| `20`–`23` | Day/night, weather, audio, saves                                                  |
+| `24`–`28` | UI/UX, asset pipeline, art direction, animation, performance                      |
+| `29`–`31` | Testing, deployment, security                                                     |
+| `32`–`35` | Backlog, current task, development log, agent rules _(living documents)_          |
 | `36`–`40` | Multiplayer, network protocol, server operations, content authoring, decision log |
 
 Start with `00`, `04`, and `35`. Everything else is reference.

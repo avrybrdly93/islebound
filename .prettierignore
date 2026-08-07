@@ -1,0 +1,15 @@
+node_modules
+dist
+pnpm-lock.yaml
+
+# Deliberately malformed / rule-violating code. Formatting it is pointless and
+# reformatting it could move the line a fixture assertion points at.
+tools/lint-fixtures
+
+# The prose corpus is human-owned and hand-wrapped, and several files in it are
+# ones an agent is forbidden to modify at all (`35_AI_AGENT_RULES.md` §4.3 for
+# `00_PROJECT_VISION.md`, §4.4 for `04` §3/§5). Running a formatter over them
+# would rewrite protected documents for whitespace, so Prettier owns code and
+# configuration here, not documentation.
+docs
+tasks
