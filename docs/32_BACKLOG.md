@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-045**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-048**.
 
 **Task format:**
 
@@ -39,13 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-### BL-002 — Configure ESLint, Prettier, and the boundary rules
-- **Phase:** 0 · **Size:** M · **Depends on:** BL-001 · **Docs:** 05, 06
-- **Description:** Flat ESLint config with `@typescript-eslint` strict-type-checked, `eslint-plugin-boundaries` encoding the import-direction table from `04` §5, `eslint-plugin-import`, and the custom rules banning `Math.random`, `dangerouslySetInnerHTML`, and `new THREE.*` inside `update*/sync*/step*` functions.
-- **Acceptance criteria:**
-  - [ ] `pnpm lint` passes on the scaffold
-  - [ ] A deliberate violation of each custom rule is caught (a fixture test per rule)
-  - [ ] Prettier config matches `06` §2
+*(empty — one task at a time)*
 
 ---
 
@@ -201,6 +195,32 @@ Current phase: **Phase 0 — Foundation**
   - [ ] A new agent can go from clone to a passing test run using only the README
   - [ ] `CLAUDE.md` is under 100 lines and points to the detailed docs rather than duplicating them
 
+### BL-045 — Add `eslint-plugin-react-hooks` to the flat config
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-003 · **Docs:** 06
+- **Description:** `06` §2 lists `eslint-plugin-react-hooks` among the flat config's plugins. BL-002 left it out: there is no React in the tree yet, so it would have had nothing to lint and no fixture could prove it works. Add it once BL-003 has mounted a React root, with a fixture in `tools/lint-fixtures/` per the pattern BL-002 established.
+- **Acceptance criteria:**
+  - [ ] `react-hooks/rules-of-hooks` and `exhaustive-deps` are on for `**/*.tsx`
+  - [ ] A fixture violating each is caught by `pnpm lint:rules`
+- **Notes:** Discovered while landing BL-002.
+
+### BL-046 — Extend the per-frame allocation ban to named `three` imports
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-002, BL-011 · **Docs:** 06, 08, 28
+- **Description:** BL-002's `no-restricted-syntax` selector matches `new THREE.Vector3()` — the namespace-import form BL-002 specified. It does not match `import { Vector3 } from 'three'` followed by `new Vector3()`, which is the form tree-shaking actually prefers and therefore the one `render/` is likely to use. Widening it needs either a maintained list of three.js constructor names or a type-aware rule.
+- **Acceptance criteria:**
+  - [ ] `new Vector3()` inside an `update*`/`sync*`/`step*` function is caught
+  - [ ] A fixture per import form in `tools/lint-fixtures/`
+  - [ ] No false positive on a `new Vector3()` at module scope
+- **Notes:** Discovered while landing BL-002; the gap is named in a comment in `eslint.config.js` so it is not mistaken for an oversight.
+
+### BL-047 — Migrate `boundaries/external` onto `boundaries/dependencies`
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-002 · **Docs:** 04
+- **Description:** `eslint-plugin-boundaries` v7 deprecates the `boundaries/external` rule in favour of a `boundaries/dependencies` policy with module selectors, and warns about it on every run. BL-002 attempted the migration and the replacement policy did not fire — a deliberate `import * as THREE from 'three'` inside `sim/` passed with `checkAllOrigins: true` and a `disallow: { to: { module: { source } } }` policy. Rather than ship a rule that reads correctly and enforces nothing, `04` §5's "sim MAY NOT import three, react, DOM" stays on the deprecated rule.
+- **Acceptance criteria:**
+  - [ ] `sim/` importing `three`, `react` or `react-dom` is still an error, via `boundaries/dependencies`
+  - [ ] `render/` importing `three` is still allowed
+  - [ ] The deprecation warning is gone from `pnpm lint` output
+- **Notes:** Verify with the four-direction probe described in the BL-002 development-log entry. Discovered while landing BL-002.
+
 ---
 
 ## Ready — Phase 1: Player & World (seeded; groom before starting)
@@ -310,6 +330,10 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-002 — Configure ESLint, Prettier, and the boundary rules
+- **Completed:** 2026-08-07 · **PR:** — (pushed direct to `main`)
+- Flat ESLint config with type-aware `@typescript-eslint`, the `04` §5 import-direction table under `eslint-plugin-boundaries` (default-deny), and the three custom bans as `no-restricted-syntax` selectors. Prettier config per `06` §2, scoped to code and configuration. `tools/check-lint-rules.ts` (`pnpm lint:rules`) proves each custom rule fires against a deliberate violation. Discovered work: BL-045, BL-046, BL-047.
 
 ### BL-001 — Initialise the pnpm workspace and package scaffolding
 - **Completed:** 2026-08-04 · **PR:** —

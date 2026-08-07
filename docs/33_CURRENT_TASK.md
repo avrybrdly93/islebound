@@ -4,51 +4,15 @@
 
 ---
 
-## Status: IN_PROGRESS
+## Status: IDLE
 
 ## Current task
 
-**BL-002** — Configure ESLint, Prettier, and the boundary rules
+**None.** BL-002 is complete (see `Recently completed` below and the `34_DEVELOPMENT_LOG.md` entry for the full record).
 
-- **Phase:** 0
-- **Started:** 2026-08-07
-- **Branch:** committed directly to `main` (this repo's automated sessions push to `main`)
-- **Docs read:** workflow, 33, 32, 35, 34 (tail), 04 §5, 05 §6–8, 06 §1–6, 07
-- **Estimated size:** M
+**Next action for an agent:** read `.github/AI_DEVELOPMENT_WORKFLOW.md`, then `docs/32_BACKLOG.md`, and pick **BL-003** (topmost unblocked task in Phase 0's Ready list).
 
-### Plan
-
-1. Add the root dev dependencies ESLint flat config needs (`eslint`, `@eslint/js`, `typescript-eslint`, `eslint-plugin-boundaries`, `eslint-plugin-import`, `prettier`, `eslint-config-prettier`) and the `lint` / `format` scripts.
-2. `.prettierrc.json` matching `06` §2 exactly (`printWidth: 100`, `singleQuote: true`, `semi: true`, `trailingComma: 'all'`), plus `.prettierignore`.
-3. `eslint.config.js`: `@typescript-eslint` strict-type-checked (type-aware), `eslint-plugin-import`, and `eslint-plugin-boundaries` encoding the import-direction table from `04` §5 verbatim.
-4. The three custom bans from the task description — `Math.random`, `dangerouslySetInnerHTML`, and `new THREE.*` inside `update*`/`sync*`/`step*` functions — via `no-restricted-syntax` selectors rather than a bespoke plugin.
-5. A fixture per custom rule under `tools/lint-fixtures/`, plus `tools/check-lint-rules.ts` that lints each fixture through ESLint's Node API and fails unless the expected rule fires. Wired as `pnpm lint:rules`.
-6. Verify: `pnpm lint`, `pnpm lint:rules`, `pnpm format:check`, `pnpm typecheck` all green on the scaffold.
-
-### Progress
-
-- [ ] Step 1 — dependencies + scripts
-- [ ] Step 2 — Prettier config
-- [ ] Step 3 — ESLint flat config + boundaries
-- [ ] Step 4 — custom rules
-- [ ] Step 5 — fixture harness
-- [ ] Step 6 — verification + docs
-
-### Decisions made during implementation
-
-*(filled in as they happen)*
-
-### Discovered work (added to backlog, NOT done in this task)
-
-*(filled in as it is found)*
-
-### Blockers
-
-- None
-
-### Notes for the next session
-
-The task's acceptance criteria mention "a fixture test per rule", but `pnpm test` does not exist yet — the test harness is BL-015. The fixtures are therefore run by a standalone script rather than a test framework, so that BL-002 does not silently pull BL-015 forward.
+**One thing worth knowing before you write code:** `pnpm lint` is now a real gate and it is default-deny on module boundaries. A file in `packages/client/src/<layer>/` may only import the layers `04` §5 allows, and a pair missing from that table is an error, not a gap. If you need a direction the table does not have, that is a `04` §5 change and needs human approval (`35` §4.4) — not a config edit.
 
 ---
 
@@ -115,4 +79,5 @@ Blockers requiring human input include: any change to `04_TECHNICAL_ARCHITECTURE
 
 | Task | Completed | PR | Notes |
 |---|---|---|---|
+| BL-002 | 2026-08-07 | — | ESLint flat config (boundaries default-deny), Prettier per `06` §2, `pnpm lint:rules` fixture harness; filed BL-045/046/047 |
 | BL-001 | 2026-08-04 | — | pnpm workspace scaffolding; `_scaffold.ts` markers under core/sim/render/ui/content to be deleted by the tasks that fill those dirs |
