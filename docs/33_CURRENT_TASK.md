@@ -4,15 +4,58 @@
 
 ---
 
-## Status: IDLE
+## Status: IN_PROGRESS
 
 ## Current task
+**BL-003** — Vite app shell with a canvas and a black screen
+- **Phase:** 0
+- **Started:** 2026-08-09
+- **Branch:** worked directly on `main` (Phase 0 has no PR flow yet; BL-019 adds CI)
+- **Docs read:** 04, 05, 06, 07, 08, 29, 35, AI_DEVELOPMENT_WORKFLOW
+- **Estimated size:** S
 
-**None.** BL-002 is complete (see `Recently completed` below and the `34_DEVELOPMENT_LOG.md` entry for the full record).
+### Plan
+1. Add React 18 to `@halcyon/client` — a *runtime* dependency, but one `04` §3 already
+   names as binding ("UI | React 18 + a thin custom store, DOM overlay only"), so this
+   implements an approved decision rather than making a new one. `@vitejs/plugin-react` and
+   the `@types/react*` packages come with it as dev dependencies; the plugin is what makes
+   Fast Refresh work, which is an acceptance criterion.
+2. `index.html`: a full-window `<canvas>` and an overlay `<div>` for the React root, plus the
+   base stylesheet.
+3. `src/render/canvas.ts`: attach to the canvas, and resize its **drawing buffer** to
+   `cssSize × devicePixelRatio`. The pixel-ratio arithmetic goes in a pure exported function
+   so it is testable the moment BL-015 lands a runner.
+4. `src/ui/App.tsx` + `src/ui/mountOverlay.tsx`: the React overlay root. Nothing visible yet —
+   BL-013's dev overlay and the HUD are later tasks.
+5. `src/main.ts`: replace BL-001's scaffold entry with the real bootstrap. Delete
+   `render/_scaffold.ts` and `ui/_scaffold.ts` (BL-001 said the task that fills a directory
+   deletes its marker); `core/`, `sim/` and `content/` keep theirs for BL-004/005.
+6. Verify: `pnpm lint`, `pnpm lint:rules`, `pnpm typecheck`, `pnpm build`, plus a real
+   headless-Chromium check of the three acceptance criteria.
 
-**Next action for an agent:** read `.github/AI_DEVELOPMENT_WORKFLOW.md`, then `docs/32_BACKLOG.md`, and pick **BL-003** (topmost unblocked task in Phase 0's Ready list).
+### Progress
+- [ ] Step 1 — React dependency
+- [ ] Step 2 — index.html + base stylesheet
+- [ ] Step 3 — canvas sizing
+- [ ] Step 4 — React overlay root
+- [ ] Step 5 — main.ts bootstrap
+- [ ] Step 6 — verification
 
-**One thing worth knowing before you write code:** `pnpm lint` is now a real gate and it is default-deny on module boundaries. A file in `packages/client/src/<layer>/` may only import the layers `04` §5 allows, and a pair missing from that table is an error, not a gap. If you need a direction the table does not have, that is a `04` §5 change and needs human approval (`35` §4.4) — not a config edit.
+### Decisions made during implementation
+*(filled in as they happen)*
+
+### Discovered work (added to backlog, NOT done in this task)
+*(filled in as it is found)*
+
+### Blockers
+- None. **But note what cannot be run yet:** `35` §4.9 requires the full test suite plus
+  `pnpm sim --assert-hash` before a task is marked done, and neither exists at this point in
+  Phase 0 — the test runner is BL-015, the sim harness BL-014, both below this task in the
+  Ready list. The gates that do exist (`lint`, `lint:rules`, `typecheck`, `build`) are all
+  that can be run, and the log entry says so rather than implying a suite passed.
+
+### Notes for the next session
+*(filled in at handoff)*
 
 ---
 
