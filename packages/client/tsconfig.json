@@ -1,6 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // React lives in the client only (`04` §5 puts `ui/` here and nowhere
+    // else), so the JSX setting is here rather than in tsconfig.base.json —
+    // the shared and server packages have no business compiling JSX.
+    "jsx": "react-jsx",
     "types": ["vite/client", "node"]
   },
   "include": ["src", "vite.config.ts"]
