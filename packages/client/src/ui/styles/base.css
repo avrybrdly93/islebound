@@ -1,0 +1,64 @@
+/*
+ * Base layout for the app shell (BL-003).
+ *
+ * Only what the shell itself needs: the page fills the window, the canvas fills
+ * the page, and the overlay sits on top without taking input. Design tokens,
+ * typography and component styles belong to `24_UI_UX_SYSTEM.md` and its own
+ * backlog items — `05` §2 puts them in `ui/styles/` alongside this file.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  /* The canvas is the game; there is no text to select and dragging a
+     selection across it during play is only ever an accident. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#app {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/*
+ * `display: block` because a canvas is inline by default, which reserves room
+ * for a text baseline under it and produces a few pixels of scrollbar on a
+ * 100%-height page. Classic, and invisible until you look for it.
+ *
+ * The width/height here are the CSS box. The drawing buffer is sized in
+ * `render/canvas.ts` from this box times the device pixel ratio, and the two
+ * are different numbers on any non-1x display.
+ */
+#game-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+
+/*
+ * The overlay covers the canvas exactly and is transparent to input.
+ *
+ * `pointer-events: none` here is the default for the whole UI tree, and any
+ * element that needs to be clickable sets `pointer-events: auto` on itself.
+ * That direction matters: an overlay that is interactive by default and opts
+ * *out* per element would swallow a click on the world the first time someone
+ * forgot, and that bug looks like broken input rather than broken CSS.
+ */
+#ui-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
