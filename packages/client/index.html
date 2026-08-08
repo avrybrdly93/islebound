@@ -6,6 +6,17 @@
     <title>Halcyon Isle</title>
   </head>
   <body>
+    <!--
+      Two siblings inside one positioned container, in this order: the canvas
+      paints, the overlay sits on top of it. The overlay is
+      `pointer-events: none` in ui/styles/base.css, so clicks reach the canvas
+      through it; a screen that needs to be clickable opts back in on its own
+      element.
+    -->
+    <div id="app">
+      <canvas id="game-canvas"></canvas>
+      <div id="ui-overlay"></div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
