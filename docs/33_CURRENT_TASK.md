@@ -4,58 +4,18 @@
 
 ---
 
-## Status: IN_PROGRESS
+## Status: IDLE
 
 ## Current task
-**BL-003** — Vite app shell with a canvas and a black screen
-- **Phase:** 0
-- **Started:** 2026-08-09
-- **Branch:** worked directly on `main` (Phase 0 has no PR flow yet; BL-019 adds CI)
-- **Docs read:** 04, 05, 06, 07, 08, 29, 35, AI_DEVELOPMENT_WORKFLOW
-- **Estimated size:** S
 
-### Plan
-1. Add React 18 to `@halcyon/client` — a *runtime* dependency, but one `04` §3 already
-   names as binding ("UI | React 18 + a thin custom store, DOM overlay only"), so this
-   implements an approved decision rather than making a new one. `@vitejs/plugin-react` and
-   the `@types/react*` packages come with it as dev dependencies; the plugin is what makes
-   Fast Refresh work, which is an acceptance criterion.
-2. `index.html`: a full-window `<canvas>` and an overlay `<div>` for the React root, plus the
-   base stylesheet.
-3. `src/render/canvas.ts`: attach to the canvas, and resize its **drawing buffer** to
-   `cssSize × devicePixelRatio`. The pixel-ratio arithmetic goes in a pure exported function
-   so it is testable the moment BL-015 lands a runner.
-4. `src/ui/App.tsx` + `src/ui/mountOverlay.tsx`: the React overlay root. Nothing visible yet —
-   BL-013's dev overlay and the HUD are later tasks.
-5. `src/main.ts`: replace BL-001's scaffold entry with the real bootstrap. Delete
-   `render/_scaffold.ts` and `ui/_scaffold.ts` (BL-001 said the task that fills a directory
-   deletes its marker); `core/`, `sim/` and `content/` keep theirs for BL-004/005.
-6. Verify: `pnpm lint`, `pnpm lint:rules`, `pnpm typecheck`, `pnpm build`, plus a real
-   headless-Chromium check of the three acceptance criteria.
+**None.** BL-003 is complete (see `Recently completed` below and the `34_DEVELOPMENT_LOG.md` entry for the full record).
 
-### Progress
-- [ ] Step 1 — React dependency
-- [ ] Step 2 — index.html + base stylesheet
-- [ ] Step 3 — canvas sizing
-- [ ] Step 4 — React overlay root
-- [ ] Step 5 — main.ts bootstrap
-- [ ] Step 6 — verification
+**Next action for an agent:** read `.github/AI_DEVELOPMENT_WORKFLOW.md`, then `docs/32_BACKLOG.md`, and pick **BL-004** (Core math module — now the topmost unblocked task in Phase 0's Ready list).
 
-### Decisions made during implementation
-*(filled in as they happen)*
+**Two things worth knowing before you write code:**
 
-### Discovered work (added to backlog, NOT done in this task)
-*(filled in as it is found)*
-
-### Blockers
-- None. **But note what cannot be run yet:** `35` §4.9 requires the full test suite plus
-  `pnpm sim --assert-hash` before a task is marked done, and neither exists at this point in
-  Phase 0 — the test runner is BL-015, the sim harness BL-014, both below this task in the
-  Ready list. The gates that do exist (`lint`, `lint:rules`, `typecheck`, `build`) are all
-  that can be run, and the log entry says so rather than implying a suite passed.
-
-### Notes for the next session
-*(filled in at handoff)*
+1. **`pnpm typecheck` and `pnpm lint` passing does not mean the app builds.** BL-003 found this the hard way: a Vite plugin whose major version did not match the pinned Vite 5 broke `pnpm build` while both other gates stayed green, because neither resolves a plugin's runtime imports. Run `pnpm build` before you call anything done. It is not in CI yet — that is BL-019.
+2. **`35` §4.9 asks for the full test suite and `pnpm sim --assert-hash` before marking a task done, and neither exists yet.** The runner is BL-015, the sim harness BL-014, Playwright BL-016 — all below BL-004 in the Ready list. Until they land, the honest gate is `pnpm lint && pnpm lint:rules && pnpm typecheck && pnpm format:check && pnpm build`, plus whatever direct measurement your task's criteria admit. BL-003 measured its browser criteria against a headless Chromium driven by a throwaway script outside the repo and wrote the numbers into `34`; **do that rather than asserting a criterion by inspection**, and file the follow-up (BL-048 is BL-003's) so it becomes a real test later. Say plainly in the log which gates you could not run.
 
 ---
 
@@ -122,5 +82,6 @@ Blockers requiring human input include: any change to `04_TECHNICAL_ARCHITECTURE
 
 | Task | Completed | PR | Notes |
 |---|---|---|---|
+| BL-003 | 2026-08-09 | — | Canvas + dpr-aware drawing buffer, React overlay (`pointer-events: none`), HMR teardown; verified against headless Chromium at dpr 1/2/3; filed BL-048/049 |
 | BL-002 | 2026-08-07 | — | ESLint flat config (boundaries default-deny), Prettier per `06` §2, `pnpm lint:rules` fixture harness; filed BL-045/046/047 |
 | BL-001 | 2026-08-04 | — | pnpm workspace scaffolding; `_scaffold.ts` markers under core/sim/render/ui/content to be deleted by the tasks that fill those dirs |

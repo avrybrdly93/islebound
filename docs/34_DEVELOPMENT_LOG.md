@@ -98,6 +98,56 @@ What moved to the Icebox, what was promoted out of it, and why.
 
 ---
 
+## 2026-08-09 — BL-003 Vite app shell with a canvas and a black screen
+
+**Type:** feature
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~2h
+
+### What changed
+`index.html` now declares a full-window `<canvas>` and a sibling overlay container inside one positioned `#app`. `render/canvas.ts` sizes the canvas's *drawing buffer* to its CSS box times `min(devicePixelRatio, 2)` and keeps it there. `ui/App.tsx` and `ui/mountOverlay.tsx` mount a React 18 root into the overlay, which `ui/styles/base.css` makes `pointer-events: none`. `main.ts` replaces BL-001's alias-resolution scaffold with the real bootstrap, including HMR teardown. React 18, `react-dom`, `@vitejs/plugin-react` and the `@types/react*` packages were added; `render/_scaffold.ts` and `ui/_scaffold.ts` were deleted.
+
+### Why it was done this way
+**The overlay is transparent to input by default and interactive by opt-in, not the reverse.** `#ui-overlay` sets `pointer-events: none` and any future screen that needs to be clickable sets `pointer-events: auto` on its own element. The other direction — interactive by default, opting out per element — swallows a click on the world the first time someone forgets a rule, and that bug presents as broken input rather than as broken CSS. This is the whole mechanism behind the "overlay does not intercept canvas input" criterion, so it is worth stating as a rule rather than leaving as a stylesheet line.
+
+**The canvas needs two resize listeners and the second one is the one that gets forgotten.** A `ResizeObserver` fires when the element's box changes, which covers window resizes and layout changes. It does *not* fire when the device pixel ratio changes and the box does not — dragging a window between a retina and a non-retina display, or changing browser zoom. The documented way to observe that is `matchMedia('(resolution: Xdppx)')`, which resolves only for the *current* ratio, so the listener has to be re-armed against the new ratio each time it fires. `watchPixelRatio` in `render/canvas.ts` does that.
+
+**`resizeCanvasToDisplaySize` returns a boolean and callers are expected to check it.** Assigning to `canvas.width` resets the entire drawing buffer even when the value assigned is identical, so a caller that writes unconditionally clears the screen once per frame. Returning "did anything change" is what makes the function safe to call from a render loop, which is how BL-011 will use it.
+
+**CSS size comes from `getBoundingClientRect`, not `clientWidth`.** The former is fractional. A canvas's layout box is very often not an integer, and the rounded value would make the buffer disagree with the box by up to a pixel — visible as a shimmering edge on a full-window canvas.
+
+**The pixel-ratio arithmetic is a separate pure function** (`computeDrawingBufferSize`) rather than inlined. Every case worth checking — a fractional ratio, a ratio above the cap, a zero-height box during layout, a non-finite ratio — is arithmetic that a DOM-driven test would have to stage a whole browser to reach. The floor of 1 pixel is not paranoia: a canvas is legally `0 × 0` while its container lays out, and a zero-sized drawing buffer makes `getContext('webgl2')` hand back a context that fails its first draw, a long way from the cause.
+
+**`import.meta.hot.dispose` in `main.ts` is load-bearing, not boilerplate.** Vite replaces a module's exports without reloading the page, but the DOM side effects there — a `ResizeObserver`, a media-query listener, a React root — outlive the module instance that created them. Without teardown, an edit leaves the previous generation's observers attached and a second React root fighting for the same container.
+
+**React was added without a `40_DECISION_LOG.md` entry, deliberately.** `35` §4.2 forbids adding a runtime dependency without human approval recorded there; `04` §3 already records React 18 as the binding UI choice. This implements that decision rather than making a new one, so a decision-log entry would be a duplicate of a row that already exists.
+
+### Surprises
+1. **`@vitejs/plugin-react`'s current major does not work with the Vite this repo pins.** v6 imports `vite/internal`, which Vite 5 does not export, and the build dies at `ERR_PACKAGE_PATH_NOT_EXPORTED` — after `pnpm typecheck` and `pnpm lint` had both passed, since neither resolves a Vite plugin's runtime imports. Pinned to `^4`, which supports Vite 4 and 5. Bumping Vite instead would have been a change to a pinned build tool to suit a plugin, which is not what BL-003 is. Worth knowing generally: **`typecheck` + `lint` green says nothing about whether the app builds**, until BL-019 puts `build` in CI.
+2. **`35` §4.9 ("never mark a task done without the full test suite passing locally, including `pnpm sim --assert-hash`") cannot be honoured at this point in the backlog.** The test runner is BL-015, the sim harness BL-014, Playwright BL-016 — all *below* BL-003 in the Ready list the same document tells agents to work top-down. The rule and the ordering disagree for the first few Phase 0 tasks. This is not a reason to skip verification, and this task did not: see Tests below. But an agent reading `35` §4.9 literally at BL-003 has no way to comply, and that is a documentation gap rather than an agent's judgement call. Logged as a note; no doc was changed, since `35` is a constraints document and editing it is not this task.
+3. `pnpm lint` prints a deprecation warning for `boundaries/external` on every run. Pre-existing, already filed as BL-047 by BL-002; untouched here.
+
+### Tests
+**No automated test was added, because there is no runner yet** — BL-015 (Vitest) and BL-016 (Playwright) are both below this task in the Ready list. Rather than assert the criteria by inspection, they were measured against a real headless Chromium with a throwaway script kept outside the repo (adding Playwright to the repo is BL-016's job, not this task's). What was measured, at `devicePixelRatio` 1, 2 and 3, **24 checks, all passing**:
+
+- The canvas fills the viewport exactly (`1024×768` CSS against a `1024×768` viewport).
+- The drawing buffer is `cssSize × min(dpr, 2)`: **`1024×768` at dpr 1, `2048×1536` at dpr 2, and `2048×1536` at dpr 3** — the cap doing its job.
+- After `setViewportSize(640×480)` the buffer follows: `640×480` at dpr 1, `1280×960` at dpr 2 and 3.
+- `document.elementFromPoint` at the viewport centre returns `#game-canvas`, not `#ui-overlay`, with the overlay's computed `pointer-events` reading `none`. That is the "overlay does not intercept canvas input" criterion, measured rather than argued.
+- `document.documentElement.scrollHeight` equals the inner height — the `display: block` on the canvas really does remove the inline-baseline scrollbar.
+- Body background is `rgb(0, 0, 0)`, and no page errors or console errors on load.
+
+**HMR was measured with a negative control**, which is the part worth keeping: editing `ui/App.tsx` produced `[vite] hot updated: /src/ui/App.tsx` while a marker set on `window` survived, proving the page did not reload. Editing `main.ts` — which has no `hot.accept` — lost the marker and reconnected the HMR client, i.e. fell back to a full reload. Without the second half, "HMR works" would have been satisfied by a full page reload, which is not HMR.
+
+The gates that do exist all pass: `pnpm lint` clean, `pnpm lint:rules` 4/4 fixtures caught, `pnpm typecheck` clean, `pnpm format:check` clean, `pnpm build` green — **143.72 kB raw / 46.33 kB gzipped**, against `CLAUDE.md`'s 600 kB gz initial-JS budget.
+
+### Follow-ups
+- BL-048 — reinstate these checks as real tests once BL-015 and BL-016 land; the unit half (`computeDrawingBufferSize`) needs only BL-015.
+- BL-049 — `MAX_PIXEL_RATIO = 2` is a constant matching `08` §9's prose, not a measurement. Once BL-012 detects a quality tier and BL-011 draws something, the cap should come from the tier.
+
+---
+
 ## 2026-08-07 — BL-002 Configure ESLint, Prettier, and the boundary rules
 
 **Type:** chore

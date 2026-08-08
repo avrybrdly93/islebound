@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-048**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-050**.
 
 **Task format:**
 
@@ -44,14 +44,6 @@ Current phase: **Phase 0 — Foundation**
 ---
 
 ## Ready — Phase 0: Foundation
-
-### BL-003 — Vite app shell with a canvas and a black screen
-- **Phase:** 0 · **Size:** S · **Depends on:** BL-001 · **Docs:** 05, 08
-- **Description:** `index.html`, `main.ts`, a full-window canvas, correct resize handling with devicePixelRatio, and a React root mounted as an overlay with `pointer-events: none` by default.
-- **Acceptance criteria:**
-  - [ ] `pnpm dev` serves a black canvas that resizes correctly
-  - [ ] HMR works
-  - [ ] The overlay does not intercept canvas input
 
 ### BL-004 — Core math module
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-001 · **Docs:** 07
@@ -195,6 +187,22 @@ Current phase: **Phase 0 — Foundation**
   - [ ] A new agent can go from clone to a passing test run using only the README
   - [ ] `CLAUDE.md` is under 100 lines and points to the detailed docs rather than duplicating them
 
+### BL-048 — Reinstate BL-003's app-shell checks as real tests
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-015, BL-016 · **Docs:** 29
+- **Description:** BL-003's three acceptance criteria were verified against headless Chromium with a throwaway script, because no test runner existed at that point in the Ready list. The measurements are in the `34` entry but nothing re-runs them, so a regression in canvas sizing or overlay pointer-events would land silently.
+- **Acceptance criteria:**
+  - [ ] Unit tests for `computeDrawingBufferSize`: fractional ratio, ratio above the cap, zero-size box, non-finite ratio (Vitest, no DOM needed)
+  - [ ] Playwright assertions that the drawing buffer is `cssSize × min(dpr, 2)` at dpr 1/2/3 and that `elementFromPoint` at the viewport centre is the canvas
+  - [ ] The dpr-change path (`matchMedia`) is covered, since `ResizeObserver` alone does not fire for it
+- **Notes:** The unit half only needs BL-015; the browser half needs BL-016. Split if BL-015 lands well before BL-016.
+
+### BL-049 — Decide the device-pixel-ratio cap with measured evidence
+- **Phase:** 1 · **Size:** S · **Depends on:** BL-012, BL-011 · **Docs:** 08, 28
+- **Description:** `render/canvas.ts` caps the drawing buffer at `MAX_PIXEL_RATIO = 2`, a constant chosen to match `08` §9's `Math.min(devicePixelRatio, capabilities.maxPixelRatio)` and its note that integrated GPUs get 1.5. Nothing has been measured; there is no renderer yet. Once BL-012 detects a quality tier and BL-011 draws something, the cap should come from the tier rather than from a module-level constant.
+- **Acceptance criteria:**
+  - [ ] The cap is a capability-tier value, with the constant as its default
+  - [ ] A frame-time measurement at 1080p on at least one integrated GPU justifies the tier values
+
 ### BL-045 — Add `eslint-plugin-react-hooks` to the flat config
 - **Phase:** 0 · **Size:** S · **Depends on:** BL-003 · **Docs:** 06
 - **Description:** `06` §2 lists `eslint-plugin-react-hooks` among the flat config's plugins. BL-002 left it out: there is no React in the tree yet, so it would have had nothing to lint and no fixture could prove it works. Add it once BL-003 has mounted a React root, with a fixture in `tools/lint-fixtures/` per the pattern BL-002 established.
@@ -330,6 +338,10 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-003 — Vite app shell with a canvas and a black screen
+- **Completed:** 2026-08-09 · **PR:** — (pushed direct to `main`)
+- Full-window canvas whose drawing buffer tracks its CSS box times `min(devicePixelRatio, 2)` (`render/canvas.ts`, watched by a `ResizeObserver` *and* a re-armed `matchMedia` resolution query), a React 18 overlay root mounted into a `pointer-events: none` container (`ui/App.tsx`, `ui/mountOverlay.tsx`, `ui/styles/base.css`), and `main.ts` wiring them with HMR teardown. React was added as a runtime dependency under `04` §3's existing approval; `@vitejs/plugin-react` is pinned to ^4 because ^6 requires Vite 6. All three acceptance criteria verified against headless Chromium at devicePixelRatio 1, 2 and 3 — see the `34_DEVELOPMENT_LOG.md` entry for the numbers. Discovered work: BL-048, BL-049.
 
 ### BL-002 — Configure ESLint, Prettier, and the boundary rules
 - **Completed:** 2026-08-07 · **PR:** — (pushed direct to `main`)
