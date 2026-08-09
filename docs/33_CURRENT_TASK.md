@@ -4,18 +4,40 @@
 
 ---
 
-## Status: IDLE
+## Status: IN_PROGRESS
 
 ## Current task
+**BL-004** — Core math module
+- **Phase:** 0
+- **Started:** 2026-08-09
+- **Branch:** `claude/ecstatic-bohr-8728fv`
+- **Docs read:** 07 (§1, §3, §7, §8, §10), 05 (§8 layout, file/naming table), 06, 29 (§4, §6, §7), 35, 08 §9 (spring arm), 04 §5 (boundaries)
+- **Estimated size:** M
 
-**None.** BL-003 is complete (see `Recently completed` below and the `34_DEVELOPMENT_LOG.md` entry for the full record).
+### Plan
+1. `core/math/scalar.ts` — `lerp`, `inverseLerp`, `clamp`, `clamp01`, `smoothstep`, `smootherstep`, `moveTowards`, `damp`, `approximately`, angle helpers.
+2. `core/math/vec2.ts`, `vec3.ts`, `quat.ts`, `aabb.ts` — plain interfaces plus out-parameter functions per `07` §7.
+3. `core/math/easing.ts` — the standard curve set, every one `f(0) = 0`, `f(1) = 1`.
+4. `core/math/spring.ts` — critically damped spring, stepped by its **exact** solution so it is framerate-independent rather than approximately so.
+5. `core/math/hash.ts` — FNV-1a over strings and u32 words, the primitive `worldHash()` (`04` §4) and the save checksum (`23`) will both build on.
+6. Co-located `*.test.ts` per `05`'s file table, including the allocation harness.
 
-**Next action for an agent:** read `.github/AI_DEVELOPMENT_WORKFLOW.md`, then `docs/32_BACKLOG.md`, and pick **BL-004** (Core math module — now the topmost unblocked task in Phase 0's Ready list).
+### The two acceptance criteria that shape the work
 
-**Two things worth knowing before you write code:**
+- **"Zero allocation in all operations, asserted by a test using a counter-instrumented harness."** Every operation is out-parameter style, and the harness measures `heapUsed` across many iterations with forced GC. **The harness carries a control case that must be detected as allocating** — a measurement that cannot fail is not a measurement.
+- **"Spring is framerate-independent at fixed dt, verified against an analytic solution."** Taking the exact solution of the critically damped ODE as the integrator makes this exact rather than approximate: `n` small steps and one big step of the same total duration agree to machine precision, and both agree with `x(t) = x₀(1 + ωt)e^{-ωt}`.
 
-1. **`pnpm typecheck` and `pnpm lint` passing does not mean the app builds.** BL-003 found this the hard way: a Vite plugin whose major version did not match the pinned Vite 5 broke `pnpm build` while both other gates stayed green, because neither resolves a plugin's runtime imports. Run `pnpm build` before you call anything done. It is not in CI yet — that is BL-019.
-2. **`35` §4.9 asks for the full test suite and `pnpm sim --assert-hash` before marking a task done, and neither exists yet.** The runner is BL-015, the sim harness BL-014, Playwright BL-016 — all below BL-004 in the Ready list. Until they land, the honest gate is `pnpm lint && pnpm lint:rules && pnpm typecheck && pnpm format:check && pnpm build`, plus whatever direct measurement your task's criteria admit. BL-003 measured its browser criteria against a headless Chromium driven by a throwaway script outside the repo and wrote the numbers into `34`; **do that rather than asserting a criterion by inspection**, and file the follow-up (BL-048 is BL-003's) so it becomes a real test later. Say plainly in the log which gates you could not run.
+### Known gate gap, carried from BL-003's handoff
+There is still no test runner — BL-015 is the runner and it *depends on* BL-004, so it cannot come first. Tests are therefore written against `node:test` + `node:assert/strict` (standard library; no dependency added, and `35` §4 forbids adding one) and run with `node --experimental-strip-types --test`, the same mechanism `tools/check-lint-rules.ts` already uses. Coverage is measured with Node's own `--experimental-test-coverage`. **BL-015 should port these suites to Vitest**, not rewrite them.
+
+### Progress
+- [x] Task claimed in this file
+- [ ] Modules
+- [ ] Tests
+- [ ] Gates
+
+### Blockers
+- None
 
 ---
 
