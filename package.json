@@ -13,7 +13,9 @@
     "lint": "eslint .",
     "lint:rules": "node --experimental-strip-types tools/check-lint-rules.ts",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test:node": "node --expose-gc --import ./tools/registerAliases.mjs --test 'packages/*/src/**/*.test.ts'",
+    "test:node:coverage": "node --expose-gc --import ./tools/registerAliases.mjs --test --experimental-test-coverage 'packages/*/src/**/*.test.ts'"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

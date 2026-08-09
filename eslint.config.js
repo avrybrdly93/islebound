@@ -273,6 +273,27 @@ export default tseslint.config(
     extends: [tseslint.configs.disableTypeChecked],
   },
 
+  {
+    // Test files, until BL-015 replaces `node:test` with Vitest.
+    //
+    // `node:test`'s `describe`/`it` return a promise; Vitest's return void.
+    // Every suite declaration in a `node:test` file is therefore a floating
+    // promise as far as the type-aware rule is concerned — around 230 of them
+    // across the first suites, none of them a defect, and `void describe(...)`
+    // at every call site would be noise that has to be undone later. The rule
+    // is off for test files only, and only until the runner changes; BL-015
+    // should delete this block along with `tools/aliasResolver.mjs`.
+    //
+    // `restrict-template-expressions` goes with it for the same span: an
+    // assertion message that interpolates a measured number
+    // (`${bytesPerOp.toFixed(2)}`) is the whole point of the message.
+    files: ['**/*.test.ts', '**/*.test.tsx'],
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/restrict-template-expressions': 'off',
+    },
+  },
+
   // Last, so it wins: switch off everything Prettier owns.
   prettier,
 );
