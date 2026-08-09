@@ -34,6 +34,52 @@ What was added, and what it protects.
 
 ---
 
+## 2026-08-09 — BL-004 Core math module
+
+**Type:** feature
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~1 session
+
+### What changed
+`packages/client/src/core/math/` now holds `scalar.ts`, `vec2.ts`, `vec3.ts`, `quat.ts`, `aabb.ts`, `easing.ts`, `spring.ts` and `hash.ts`, in the plain-object out-parameter style `07` §7 makes binding, plus `allocationHarness.ts` and seven co-located test files. `core/_scaffold.ts` is deleted; its comment asked for exactly this. Two of BL-004's three acceptance criteria are met and the third is not — the task stays In Progress, with BL-050 carrying what remains.
+
+### Why it was done this way
+**The critically damped spring steps by the exact closed-form solution rather than integrating towards it.** At ζ = 1 the ODE has one, so there is no reason to approximate it: `x(t) = target + (d₀ + (v₀ + ω d₀)t)e^{−ωt}`. Framerate independence then holds to rounding rather than to first order — `n` steps of `dt` and one step of `n·dt` land in the same place — and the integrator is unconditionally stable at any `dt`, where an explicit scheme diverges above `dt ≈ 2/ω`, which at ω = 12 is a single dropped frame. It also makes the acceptance criterion satisfiable in the strongest sense: the thing it must be verified against *is* what it computes. Only ζ = 1 is offered, because an underdamped camera is a bug rather than a tuning choice.
+
+**Numbers are hashed by their IEEE bits, not by `String(value)`.** `String(-0) === '0'`, and two world states that differ by a sign of zero must not produce the same `worldHash()`. Decimal rendering is also a guarantee about `toString`, not about the value.
+
+**`normalize` returns zero for a zero input, and `normalizeQ` returns the identity.** Both cases are reached constantly — a movement intent with no keys held, a velocity at rest — and a `NaN` escaping into a transform would poison the world hash somewhere far from where it started.
+
+**An AABB is inclusive on both bounds.** A structure placed flush against another must count as adjacent for `17`'s socket queries; a half-open box says it does not.
+
+### Surprises
+
+**1. BL-004's own acceptance criteria need a test runner, and the test runner depends on BL-004.** BL-015 is "Vitest setup and first test suites", `Depends on: BL-004`, so it cannot come first — yet BL-004 asks for a counter-instrumented allocation test and 95% coverage. Resolved by writing the suites against `node:test` + `node:assert/strict` (standard library, so no dependency was added — `35` forbids a runtime one) and measuring coverage with Node's `--experimental-test-coverage`. **BL-015 should port these suites, not rewrite them.** Worth reflecting in the backlog ordering: a task whose criteria are tests cannot precede the runner without this workaround.
+
+**2. Node resolves neither `tsconfig` `paths` nor Vite aliases**, so `node --test` could not load a single module that imports a sibling by alias — which is every module in the tree. `tools/aliasResolver.mjs` teaches it the five. That makes three hand-synced copies of the same alias map (BL-052).
+
+**3. Measuring allocation is much harder than the criterion's wording suggests, and three plausible harnesses are wrong.** A before/after `heapUsed` delta measures *retention*, not garbage — the collector runs during the loop, so 200,000 short-lived objects finish with the heap barely larger than it started, and it under-reported a known allocator sevenfold. Counting collections via `PerformanceObserver` on `'gc'` reports **zero** for a loop that provably allocates 200,000 objects on Node v22.22.2, under both `entryTypes` and `type`, callback and `takeRecords()`. And a closure written `(i) => lerp(0, 10, t)` has its returned double boxed at the call boundary, charging 6.2 bytes/op to an operation that allocates nothing. Every one of these was caught by the harness's **control case** — a deliberate allocator that must be detected — and by nothing else. If a future harness has no control, it is not a harness.
+
+**4. V8 field representation is a real, measurable trap for this codebase's zero-allocation rule.** Writing a double into an object field that was first stored an integer costs a boxed heap number: the identical `normalize(out, a)` measures 6.1 bytes/op with `out` created as `{x: 0, y: 0, z: 0}` and 0.3 with `{x: 0.5, y: 0.5, z: 0.5}`. Nothing in the docs anticipates this, and it plausibly affects component defaults across the whole project, not just tests.
+
+**5. `-0` is a determinism hazard hiding in plain sight.** `perp2(v2(), v2(1, 0))` returns `{x: -0, y: 1}` — `assert.deepEqual` separates it from `{x: 0, y: 1}`, and so does a bitwise hash, while `-0 === 0` and a debugger shows "0". Two worlds that look identical could hash differently, with no visible cause. Filed as BL-051.
+
+### Tests
+131 assertions passing, 0 failing, 16 `todo`. Coverage on the eight source modules: **100% of lines and functions, 96.8–100% of branches**, against BL-004's 95% floor.
+
+- `spring.test.ts` meets criterion 3 directly: 30 Hz, 60 Hz, 144 Hz and one single jump over the same second agree to 1e-12 in both value and velocity, and all four agree with the closed form at four times. Also: never overshoots; one 10-second step lands on the target instead of diverging; `stepSpring3` is exactly three `stepSpring` calls, asserted rather than assumed because that equivalence holds only while the system stays linear.
+- The correctness suites pin the things that go quietly wrong: `lerp` hitting both endpoints exactly, alias-safety of `cross` and `rotate2`, `slerp` taking the short arc when the two quaternions carry opposite signs (the line most often missing from a hand-written slerp, and its absence reads as a physics glitch), every easing curve starting at 0 and ending at 1, and the hash reproducing the published FNV-1a vectors.
+
+**Criterion 1 is not signed off, and the per-operation suites are `todo` rather than passing.** The instrument works — control detected, floor measured — but its per-operation reading moves: three to five of thirty report exactly one returned-object's worth of bytes, reproducible to two decimals, and **the set changes when unrelated parts of the test file change**. An effect that depends on a test's position in a file is not a property of the code under test; the same calls in an isolated script measure 0.01–0.10 bytes/op and the sources create no object. The honest reading is "very probably allocation-free", which is not a sign-off, so it is recorded as unfinished with every measurement written down rather than passed against a loosened bound.
+
+### Follow-ups
+- **BL-050** — settle whether the operations allocate, and how to measure it. This is all that remains of BL-004.
+- **BL-051** — decide whether `-0` may reach world state.
+- **BL-052** — collapse the three hand-synced path-alias maps.
+
+---
+
 ## 2026-XX-XX — Project documentation system created
 
 **Type:** docs

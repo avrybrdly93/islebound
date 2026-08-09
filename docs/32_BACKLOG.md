@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-050**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-053**.
 
 **Task format:**
 
@@ -39,19 +39,19 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-*(empty — one task at a time)*
+### BL-004 — Core math module
+- **Phase:** 0 · **Size:** M · **Depends on:** BL-001 · **Docs:** 07
+- **Started:** 2026-08-09 · **Code and two of three criteria landed; see `33_CURRENT_TASK.md`**
+- **Description:** `Vec2/Vec3/Quat` as plain interfaces with out-parameter functions, `AABB`, easing curves, `moveTowards`, `damp`, critically damped springs, `lerp/clamp/smoothstep`, FNV-1a hash.
+- **Acceptance criteria:**
+  - [ ] Zero allocation in all operations (asserted by a test using a counter-instrumented harness) — **the harness is built and verified, the criterion is not signed off.** See BL-050; the measurement is unstable at per-operation resolution and the honest reading is "very probably allocation-free", which is not a sign-off
+  - [x] ≥ 95% unit coverage on this module — **100% of lines and functions, 96.8–100% of branches** on all eight source modules (`node --experimental-test-coverage`)
+  - [x] Spring implementation is framerate-independent at fixed dt (verified against an analytic solution) — 30/60/144 Hz and a single jump agree to 1e-12, and all four agree with the closed form
+- **Remaining:** BL-050 only. Everything else is landed, green and pushed.
 
 ---
 
 ## Ready — Phase 0: Foundation
-
-### BL-004 — Core math module
-- **Phase:** 0 · **Size:** M · **Depends on:** BL-001 · **Docs:** 07
-- **Description:** `Vec2/Vec3/Quat` as plain interfaces with out-parameter functions, `AABB`, easing curves, `moveTowards`, `damp`, critically damped springs, `lerp/clamp/smoothstep`, FNV-1a hash.
-- **Acceptance criteria:**
-  - [ ] Zero allocation in all operations (asserted by a test using a counter-instrumented harness)
-  - [ ] ≥ 95% unit coverage on this module
-  - [ ] Spring implementation is framerate-independent at fixed dt (verified against an analytic solution)
 
 ### BL-005 — Seeded RNG and noise
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-004 · **Docs:** 04, 12
@@ -202,6 +202,31 @@ Current phase: **Phase 0 — Foundation**
 - **Acceptance criteria:**
   - [ ] The cap is a capability-tier value, with the constant as its default
   - [ ] A frame-time measurement at 1080p on at least one integrated GPU justifies the tier values
+
+### BL-050 — Settle whether the math operations allocate, and how to measure it
+- **Phase:** 0 · **Size:** M · **Depends on:** BL-004, BL-015 · **Docs:** 06, 29
+- **Description:** BL-004's first acceptance criterion is unmet, and this is the whole of what remains of it. `core/math/allocationHarness.ts` is a working instrument — its control detects a deliberate per-call allocation at ~47 bytes/op and reports ~0.2 for one that writes into a caller-owned object — but run against the individual operations it gives a result that moves. Three to five of thirty report exactly one returned-object's worth of bytes (47.04 for a `Vec3`, 92.16 for an `AABB`), reproducible to two decimal places across runs, and **the set changes when unrelated parts of the test file change**. An effect that depends on a test's position in a file is not a property of the code under test; the same calls in an isolated script measure 0.01–0.10 bytes/op, and every operation's source plainly creates no object. So the operations are very probably allocation-free and the instrument is what is wrong at this scale.
+- **Acceptance criteria:**
+  - [ ] Either the per-operation suites in `allocation.test.ts` pass as written and stop being `todo`, or the harness is replaced by one whose reading does not depend on test ordering
+  - [ ] The replacement, if any, keeps a control case that fails when a deliberate allocator is measured
+  - [ ] The five originally-flagged operations (`addScaled`, aliased `add`, `rotateVec3`, `union`, `stepSpring`) are covered
+- **Notes:** Eliminated by measurement already, so do not retry them: a before/after `heapUsed` delta (measures retention, not garbage — under-reported the control sevenfold), `PerformanceObserver` on `'gc'` (reports zero collections for 200,000 provable allocations on Node v22.22.2), a megamorphic call site in the harness (fixed, figures unchanged), integer-versus-double field representation in the scratch objects (fixed, figures went up), and boxing of a returned double (fixed, removed a real 6.2 bytes/op elsewhere but not this). Worth trying next: `node:inspector`'s `HeapProfiler.startSampling`, which reports allocation by call site and does not depend on the collector's timing; or measuring each operation in its own child process. Vitest (BL-015) may also simply not have the problem.
+
+### BL-051 — Decide whether `-0` may reach world state
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-004 · **Docs:** 04, 23
+- **Description:** `hash.hashNumberInto` hashes IEEE bits, so `-0` and `0` hash differently — correctly, since they are different bit patterns and a decimal-string hash would conflate them. But they are indistinguishable in a debugger and `-0 === 0`, so a component field that picked up a `-0` (trivially: `perp2` negates a zero component, and so does any negation) would make two worlds that look identical produce different `worldHash()` values, and a determinism failure with no visible cause is the worst kind. Decide: normalise `-0` to `0` at the hash boundary, forbid it in state, or accept it and document that state comparison must use `Object.is`.
+- **Acceptance criteria:**
+  - [ ] A decision recorded in `40_DECISION_LOG.md`
+  - [ ] Whichever way it goes, a test pins it
+- **Notes:** Discovered while landing BL-004: `perp2(v2(), v2(1, 0))` returns `{x: -0, y: 1}`, which `assert.deepEqual` separates from `{x: 0, y: 1}`.
+
+### BL-052 — Collapse the three hand-synced path-alias maps into one
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-004 · **Docs:** 05
+- **Description:** The same five aliases (`@core/*` … `@content/*`) are now written out in three places: `tsconfig.base.json` `paths`, `packages/client/vite.config.ts` `resolve.alias` (whose comment already notes it is hand-synced), and `tools/aliasResolver.mjs` (added by BL-004 so `node:test` can resolve them). Two copies was a documented trade; three is where a drift becomes likely and its symptom — one tool resolving an import that another cannot — is confusing out of proportion to the cause.
+- **Acceptance criteria:**
+  - [ ] One source of truth, read by the other consumers
+  - [ ] A test or lint rule that fails if a consumer's map diverges from it
+- **Notes:** BL-015 may delete the third copy for free by replacing `node:test` with Vitest sharing the Vite config. If so, close this as done-by-BL-015 rather than doing the work.
 
 ### BL-045 — Add `eslint-plugin-react-hooks` to the flat config
 - **Phase:** 0 · **Size:** S · **Depends on:** BL-003 · **Docs:** 06
