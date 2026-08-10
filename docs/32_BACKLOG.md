@@ -39,15 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-### BL-004 — Core math module
-- **Phase:** 0 · **Size:** M · **Depends on:** BL-001 · **Docs:** 07
-- **Started:** 2026-08-09 · **Code and two of three criteria landed; see `33_CURRENT_TASK.md`**
-- **Description:** `Vec2/Vec3/Quat` as plain interfaces with out-parameter functions, `AABB`, easing curves, `moveTowards`, `damp`, critically damped springs, `lerp/clamp/smoothstep`, FNV-1a hash.
-- **Acceptance criteria:**
-  - [ ] Zero allocation in all operations (asserted by a test using a counter-instrumented harness) — **the harness is built and verified, the criterion is not signed off.** See BL-050; the measurement is unstable at per-operation resolution and the honest reading is "very probably allocation-free", which is not a sign-off
-  - [x] ≥ 95% unit coverage on this module — **100% of lines and functions, 96.8–100% of branches** on all eight source modules (`node --experimental-test-coverage`)
-  - [x] Spring implementation is framerate-independent at fixed dt (verified against an analytic solution) — 30/60/144 Hz and a single jump agree to 1e-12, and all four agree with the closed form
-- **Remaining:** BL-050 only. Everything else is landed, green and pushed.
+*(nothing — pick the topmost unblocked task from Ready)*
 
 ---
 
@@ -203,14 +195,24 @@ Current phase: **Phase 0 — Foundation**
   - [ ] The cap is a capability-tier value, with the constant as its default
   - [ ] A frame-time measurement at 1080p on at least one integrated GPU justifies the tier values
 
-### BL-050 — Settle whether the math operations allocate, and how to measure it
-- **Phase:** 0 · **Size:** M · **Depends on:** BL-004, BL-015 · **Docs:** 06, 29
-- **Description:** BL-004's first acceptance criterion is unmet, and this is the whole of what remains of it. `core/math/allocationHarness.ts` is a working instrument — its control detects a deliberate per-call allocation at ~47 bytes/op and reports ~0.2 for one that writes into a caller-owned object — but run against the individual operations it gives a result that moves. Three to five of thirty report exactly one returned-object's worth of bytes (47.04 for a `Vec3`, 92.16 for an `AABB`), reproducible to two decimal places across runs, and **the set changes when unrelated parts of the test file change**. An effect that depends on a test's position in a file is not a property of the code under test; the same calls in an isolated script measure 0.01–0.10 bytes/op, and every operation's source plainly creates no object. So the operations are very probably allocation-free and the instrument is what is wrong at this scale.
+### BL-053 — Drop `--expose-gc` from the test scripts
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-050 · **Docs:** 29
+- **Description:** Filed 2026-08-13 while closing BL-050. `--expose-gc` was there for the `heapUsed`-rise harness, which collected before each measured pass so the first sample did not attribute its predecessor's garbage to the operation. That harness is deleted; the sampling profiler does not need a forced collection, and nothing else in the tree calls `global.gc`. The flag appears in both `test:node` and `test:node:coverage` in the root `package.json`.
 - **Acceptance criteria:**
-  - [ ] Either the per-operation suites in `allocation.test.ts` pass as written and stop being `todo`, or the harness is replaced by one whose reading does not depend on test ordering
-  - [ ] The replacement, if any, keeps a control case that fails when a deliberate allocator is measured
-  - [ ] The five originally-flagged operations (`addScaled`, aliased `add`, `rotateVec3`, `union`, `stepSpring`) are covered
-- **Notes:** Eliminated by measurement already, so do not retry them: a before/after `heapUsed` delta (measures retention, not garbage — under-reported the control sevenfold), `PerformanceObserver` on `'gc'` (reports zero collections for 200,000 provable allocations on Node v22.22.2), a megamorphic call site in the harness (fixed, figures unchanged), integer-versus-double field representation in the scratch objects (fixed, figures went up), and boxing of a returned double (fixed, removed a real 6.2 bytes/op elsewhere but not this). Worth trying next: `node:inspector`'s `HeapProfiler.startSampling`, which reports allocation by call site and does not depend on the collector's timing; or measuring each operation in its own child process. Vitest (BL-015) may also simply not have the problem.
+  - [ ] Neither test script passes `--expose-gc`, and `pnpm test:node` is still 142/142
+  - [ ] Nothing references `globalThis.gc`
+- **Notes:** Small, and deliberately not done inline with BL-050 — the flag is harmless and removing it is a change to how every test in the project is invoked, which deserves its own green run rather than riding along in a commit about a measurement technique. **Do it with or after BL-015**, which rewrites those scripts anyway; doing it before means editing them twice.
+
+### BL-050 — Settle whether the math operations allocate, and how to measure it — **DONE 2026-08-13**
+- **Phase:** 0 · **Size:** M · **Depends on:** BL-004 · **Docs:** 06, 29
+- **Outcome:** the instrument was replaced, not the code. `measureAttributedAllocation` runs the operation under V8's sampling heap profiler (`HeapProfiler.startSampling`) and sums the bytes attributed to the measuring loop and its callees, so allocation is attributed **by call site**. All 30 operations — including the five the old instrument could not clear — read **exactly 0** attributed bytes against a control of **~115 kB** measured in the same process. `allocation.test.ts` is 13 passing cases with **no `todo`**, and the suite is 142 pass / 0 fail / 0 todo (was 131 / 0 / 16). It did **not** depend on BL-015: no Vitest was needed.
+- **Original description (kept, because the diagnosis is the useful part):** BL-004's first acceptance criterion was unmet, and this was the whole of what remained of it. `core/math/allocationHarness.ts` is a working instrument — its control detects a deliberate per-call allocation at ~47 bytes/op and reports ~0.2 for one that writes into a caller-owned object — but run against the individual operations it gives a result that moves. Three to five of thirty report exactly one returned-object's worth of bytes (47.04 for a `Vec3`, 92.16 for an `AABB`), reproducible to two decimal places across runs, and **the set changes when unrelated parts of the test file change**. An effect that depends on a test's position in a file is not a property of the code under test; the same calls in an isolated script measure 0.01–0.10 bytes/op, and every operation's source plainly creates no object. So the operations are very probably allocation-free and the instrument is what is wrong at this scale.
+- **Acceptance criteria:**
+  - [x] Either the per-operation suites pass and stop being `todo`, or the harness is replaced by one whose reading does not depend on test ordering — **both.** The harness is replaced, and ordering independence was verified by moving the whole `vec3` suite to the end of the file: 13/13 unchanged
+  - [x] The replacement keeps a control case that fails when a deliberate allocator is measured — and the allowance is **derived from that control in the same process** rather than being a constant, because a constant cannot tell "allocates nothing" from "the profiler saw nothing". Verified by blinding the instrument two ways (`samplingInterval` 65536; a stale `MEASURED_LOOP_NAME`): each turns 13 passes into 11 failures naming the cause
+  - [x] The five originally-flagged operations (`addScaled`, aliased `add`, `rotateVec3`, `union`, `stepSpring`) are covered — all five at 0 attributed bytes
+- **What the fix cost, for the next person who has to measure something like this:** the sampling profiler's absolute figures are **not** bytes allocated — it under-reports volume by ~100x here, because young-generation allocation from optimised code mostly takes a bump-pointer fast path V8 does not sample. That is fine for an "allocates / does not" criterion and would be useless for a byte budget. Two settings matter and both were measured in both directions: `samplingInterval` (65536 makes the **control** read 0 — a false pass) and `warmup` (at 5000 the operation tiers up inside the measured window and the compile allocation is attributed to it; at 200000 the control read 0 in one pass of three). The reported figure is the **minimum over three passes**, since every error source here is additive.
+- **Notes (pre-fix, kept):** Eliminated by measurement already, so do not retry them: a before/after `heapUsed` delta (measures retention, not garbage — under-reported the control sevenfold), `PerformanceObserver` on `'gc'` (reports zero collections for 200,000 provable allocations on Node v22.22.2), a megamorphic call site in the harness (fixed, figures unchanged), integer-versus-double field representation in the scratch objects (fixed, figures went up), and boxing of a returned double (fixed, removed a real 6.2 bytes/op elsewhere but not this). Worth trying next: `node:inspector`'s `HeapProfiler.startSampling`, which reports allocation by call site and does not depend on the collector's timing; or measuring each operation in its own child process. Vitest (BL-015) may also simply not have the problem.
 
 ### BL-051 — Decide whether `-0` may reach world state
 - **Phase:** 0 · **Size:** S · **Depends on:** BL-004 · **Docs:** 04, 23

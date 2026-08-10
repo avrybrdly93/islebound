@@ -34,6 +34,95 @@ What was added, and what it protects.
 
 ---
 
+## 2026-08-13 — BL-050 Attribute allocation by call site, closing BL-004
+
+**Type:** fix
+**Phase:** 0
+**PR:** —
+**Time:** ~1.5h
+
+### What changed
+`core/math/allocationHarness.ts` gained `measureAttributedAllocation`, which runs an
+operation under V8's sampling heap profiler (`HeapProfiler.startSampling` via
+`node:inspector`) and sums the bytes the profiler attributes to the measuring loop and
+everything it called. The `heapUsed`-rise instrument it replaces is deleted.
+`allocation.test.ts` is now 13 passing cases with **no `todo`**; the whole suite is
+**142 pass / 0 fail / 0 todo**, up from 131 / 0 / 16 — every one of those 16 `todo` was
+BL-004's zero-allocation criterion. That criterion is signed off, so **BL-004 is
+complete**.
+
+### Why it was done this way
+The previous session left this open with an honest verdict: the operations are "very
+probably allocation-free", which is not a sign-off. The reason it could get no further
+is that the old instrument measured **the wrong thing at this resolution**. It summed
+process-wide `heapUsed` increases and divided by *one* operation's iteration count, so
+any other allocation in the process during the loop was charged to the operation under
+test. At whole-process resolution that is fine, and its control case always worked —
+which is exactly why it looked sound. At per-operation resolution it is a
+misattribution engine, and the symptom was diagnostic: three to five of thirty
+allocation-free operations read one returned object's worth of bytes, and *the set
+changed when unrelated parts of the test file changed*.
+
+The sampling heap profiler cannot make that mistake by construction. It records a stack
+trace at sampled allocations, so bytes are attributed to the code that allocated them;
+another test's garbage lands under another test's frames. It is also independent of when
+the collector runs, which is what defeated the original before/after delta.
+
+The second decision worth stating: **the pass threshold is derived from a control
+measured in the same process, not written as a constant.** A constant cannot distinguish
+"this operation allocates nothing" from "the profiler recorded nothing" — and the very
+first dead end in this task's history was an instrument whose signal was always zero,
+which passes every case including the ones designed to fail.
+
+### Surprises
+Three, and the second is the one the docs did not predict.
+
+**The absolute figures are not bytes allocated, and it does not matter.** The profiler
+under-reports volume by ~100×: 200k iterations of a ~47-byte-per-call allocator should
+total ~9.4 MB and it attributes ~90–115 kB. Young-generation allocation from optimised
+code mostly takes a bump-pointer fast path V8 does not sample. For an *allocates / does
+not* criterion the separation is total (tens of thousands of bytes versus exactly zero),
+so nothing is lost — but anyone who needs a real byte budget later must not reach for
+this instrument. Written into the module doc rather than left to be rediscovered.
+
+**A longer warm-up made the instrument worse, not better, and in the dangerous
+direction.** At `warmup = 5000` the operation tiers up inside the measured window and
+the compile allocation is attributed to the frames being compiled — a 3–10 kB reading on
+an operation that allocates nothing. Raising it to 50000 gave exactly 0 on every clean
+operation in every pass. Raising it further to 200000 made the **control** read 0 in one
+pass of three: a false pass. The intuition "warm up more, measure more cleanly" is
+wrong here, and only the control caught it.
+
+**It did not need BL-015.** BL-050's backlog entry listed BL-015 (Vitest) as a
+dependency, on the theory that a different runner might not have the ordering problem.
+The problem was the instrument, not the runner, and the dependency was a guess. Its
+backlog entry now says so.
+
+### Tests
+`allocation.test.ts`: 13 cases, 0 `todo`. All 30 math operations — including the five the
+old instrument could not clear (`addScaled`, aliased `add`, `rotateVec3`, `union`,
+`stepSpring`) — assert 0 attributed bytes against a control-derived allowance. Added a
+case covering the allowance guard's throwing path directly.
+
+Three checks were run by perturbation and reverted, because 13 green cases prove nothing
+on their own:
+- **moving the whole `vec3` suite to the end of the file** — 13/13 unchanged, which is
+  BL-050's actual acceptance criterion (the old instrument's readings moved under exactly
+  this edit);
+- **`samplingInterval` 65536** — the control reads 0 and the file goes from 13 passes to
+  11 failures naming the cause;
+- **a stale `MEASURED_LOOP_NAME`** — same loud failure.
+
+Coverage: `allocationHarness.ts` 100% of lines and functions; all files 99.83%.
+
+### Follow-ups
+- **BL-053** — drop `--expose-gc` from both test scripts; it existed for the deleted
+  harness and nothing calls `globalThis.gc` now. Left for BL-015, which rewrites those
+  scripts anyway.
+- BL-051 and BL-052 carry over unchanged.
+
+---
+
 ## 2026-08-09 — BL-004 Core math module
 
 **Type:** feature
