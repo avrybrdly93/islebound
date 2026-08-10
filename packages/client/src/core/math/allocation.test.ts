@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
-import { describe, it, todo } from 'node:test';
+import { before, describe, it } from 'node:test';
 
-import { keepAlive, measureAllocation, readRing } from '@core/math/allocationHarness';
+import {
+  allocationAllowanceFromControl,
+  keepAlive,
+  measureAttributedAllocation,
+  readRing,
+} from '@core/math/allocationHarness';
 import {
   aabb,
   closestPoint,
@@ -68,20 +73,6 @@ import {
  * is missing, so a run without it is a red test and not a quiet pass.
  */
 
-/**
- * Threshold for "did not allocate", in bytes per operation.
- *
- * Not zero, and the reason is measured rather than assumed: the harness's own
- * `process.memoryUsage()` call allocates a result object per sample, which
- * puts a floor of about **0.20 bytes/op** under every reading (see
- * `allocationHarness.ts`). Two is ten times that floor and one twenty-third of
- * the **47 bytes/op** a single `{x, y, z}` per call measures, so the band is
- * wide on both sides — a threshold chosen from two measurements rather than
- * from taste, which is what keeps this from being the flaky test `29` §7 calls
- * a broken one.
- */
-const MAX_BYTES_PER_OP = 2;
-
 /** Sink for the no-op control, so its arithmetic is not dead code. */
 let scratchSum = 0;
 
@@ -109,171 +100,193 @@ const boxC = aabb(0.5, 0.5, 0.5, 0.5, 0.5, 0.5);
 const spring = createSpring(10.5, 0.5);
 const spring3 = createSpring3(1.5, 2.5, 3.5);
 
+/**
+ * The allowance every operation below is measured against, derived from the
+ * control measured in this same process. Set in `before`, so a bad instrument
+ * fails the run once and loudly rather than once per operation.
+ */
+let allowance = Number.NaN;
+
 describe('the allocation harness itself', () => {
-  it('detects an operation that allocates', () => {
+  before(async () => {
     // The control, and the case that gives every other assertion in this file
     // its meaning. `keepAlive` is what makes the allocation real: without an
-    // escape, V8 removes the object and the control passes for the wrong
-    // reason. If this ever reports zero collections, the criterion below is
-    // unverified rather than met.
-    const { bytesPerOp } = measureAllocation((i) => {
-      keepAlive({ x: i, y: i, z: i });
+    // escape V8 removes the object and the control passes for the wrong reason.
+    const control = await measureAttributedAllocation((i) => {
+      keepAlive({ x: i + 0.5, y: 2.5, z: 3.5 });
     });
+    // Throws, with a diagnosis, if the profiler did not resolve a deliberate
+    // per-call allocator. Reference-machine reading is ~115000 bytes.
+    allowance = allocationAllowanceFromControl(control.attributedBytes);
+  });
+
+  it('detected the control allocation and derived a usable allowance', () => {
     assert.ok(
-      bytesPerOp > 16,
-      `the harness measured only ${bytesPerOp.toFixed(2)} bytes/op while allocating one small ` +
-        'object per call. Every other assertion in this file is meaningless until this passes.',
+      Number.isFinite(allowance) && allowance > 0,
+      `the control did not yield an allowance (got ${allowance})`,
     );
     // Reading the ring is not incidental: without a reader the stores are dead
-    // code, V8 removes them and then the objects, and the control above
-    // measures nothing while appearing to pass.
+    // code, V8 removes them and then the objects, and the control measures
+    // nothing while appearing to pass.
     assert.ok(readRing() > 0, 'the escape ring holds nothing, so nothing actually escaped');
   });
 
-  it('reports near zero for an operation that does not allocate', () => {
-    const { bytesPerOp } = measureAllocation((i) => {
+  it('refuses to derive an allowance from a control that read low', () => {
+    // The guard's failing direction, as a test rather than as a comment. Both
+    // ways of blinding the instrument were also exercised by hand and reverted:
+    // a samplingInterval of 65536 and a stale MEASURED_LOOP_NAME each make the
+    // control read 0, and each turns this file from 13 passes into 11 failures
+    // carrying this message. That is the property the whole file rests on -- an
+    // instrument that sees nothing must not report "allocates nothing".
+    assert.throws(() => allocationAllowanceFromControl(0), /not resolving a real allocator/);
+    assert.throws(() => allocationAllowanceFromControl(9_999), /not resolving a real allocator/);
+    assert.equal(allocationAllowanceFromControl(100_000), 1_000);
+  });
+
+  it('reports zero for plain arithmetic', async () => {
+    const { attributedBytes } = await measureAttributedAllocation((i) => {
       scratchSum = i * 2 + 1;
     });
     assert.ok(
-      bytesPerOp < MAX_BYTES_PER_OP,
-      `plain arithmetic measured ${bytesPerOp.toFixed(2)} bytes/op`,
+      attributedBytes <= allowance,
+      `plain arithmetic attributed ${attributedBytes} bytes (allowance ${allowance})`,
     );
   });
 });
 
 /** Asserts one operation allocates nothing, naming it in the failure. */
-function assertNoAllocation(name: string, op: (i: number) => void): void {
-  const { bytesPerOp, iterations } = measureAllocation(op);
+async function assertNoAllocation(name: string, op: (i: number) => void): Promise<void> {
+  const { attributedBytes, totalBytes, iterations } = await measureAttributedAllocation(op);
   assert.ok(
-    bytesPerOp < MAX_BYTES_PER_OP,
-    `${name} allocated ${bytesPerOp.toFixed(2)} bytes/op over ${iterations} calls ` +
-      `(limit ${MAX_BYTES_PER_OP})`,
+    attributedBytes <= allowance,
+    `${name} attributed ${attributedBytes} bytes over ${iterations} calls ` +
+      `(allowance ${allowance}, process total in the same window ${totalBytes})`,
   );
 }
 
-todo('scalar operations allocate nothing', () => {
-  it('lerp / clamp / smoothstep / moveTowards / damp', () => {
-    assertNoAllocation('lerp', (i) => {
+describe('scalar operations allocate nothing', () => {
+  it('lerp / clamp / smoothstep / moveTowards / damp', async () => {
+    await assertNoAllocation('lerp', (i) => {
       lerp(0, 10, (i % 100) / 100);
     });
-    assertNoAllocation('clamp', (i) => {
+    await assertNoAllocation('clamp', (i) => {
       clamp(i % 20, 2, 15);
     });
-    assertNoAllocation('smoothstep', (i) => {
+    await assertNoAllocation('smoothstep', (i) => {
       smoothstep(0, 1, (i % 100) / 100);
     });
-    assertNoAllocation('moveTowards', (i) => {
+    await assertNoAllocation('moveTowards', (i) => {
       moveTowards(i % 10, 10, 0.5);
     });
-    assertNoAllocation('damp', (i) => {
+    await assertNoAllocation('damp', (i) => {
       damp(i % 10, 0, 5, 1 / 30);
     });
   });
 });
 
-todo('vec3 operations allocate nothing', () => {
-  it('add / addScaled / cross / normalize / lerp / clampLength / moveTowards', () => {
-    assertNoAllocation('add', () => {
+describe('vec3 operations allocate nothing', () => {
+  it('add / addScaled / cross / normalize / lerp / clampLength / moveTowards', async () => {
+    await assertNoAllocation('add', () => {
       add(outC, outA, outB);
     });
-    assertNoAllocation('cross', () => {
+    await assertNoAllocation('cross', () => {
       cross(outC, outA, outB);
     });
-    assertNoAllocation('normalize', () => {
+    await assertNoAllocation('normalize', () => {
       normalize(outC, outA);
     });
-    assertNoAllocation('lerpV3', (i) => {
+    await assertNoAllocation('lerpV3', (i) => {
       lerpV3(outC, outA, outB, (i % 100) / 100);
     });
-    assertNoAllocation('clampLength', () => {
+    await assertNoAllocation('clampLength', () => {
       clampLength(outC, outA, 2.5);
     });
-    assertNoAllocation('moveTowardsV3', () => {
+    await assertNoAllocation('moveTowardsV3', () => {
       moveTowardsV3(outC, outA, outB, 0.1);
     });
   });
 
-  it('when out aliases an input', () => {
+  it('when out aliases an input', async () => {
     // The aliasing contract is what lets a caller accumulate with no scratch
     // vector — the reason the zero-allocation claim holds at the call site and
     // not only inside these functions.
-    assertNoAllocation('cross(out, out, b)', () => {
+    await assertNoAllocation('cross(out, out, b)', () => {
       cross(outC, outC, outB);
     });
   });
 });
 
-todo('vec2 operations allocate nothing', () => {
-  it('add / normalize / rotate', () => {
-    assertNoAllocation('add2', () => {
+describe('vec2 operations allocate nothing', () => {
+  it('add / normalize / rotate', async () => {
+    await assertNoAllocation('add2', () => {
       add2(out2A, out2A, out2B);
     });
-    assertNoAllocation('normalize2', () => {
+    await assertNoAllocation('normalize2', () => {
       normalize2(out2A, out2B);
     });
-    assertNoAllocation('rotate2', (i) => {
+    await assertNoAllocation('rotate2', (i) => {
       rotate2(out2A, out2B, (i % 628) / 100);
     });
   });
 });
 
-todo('quaternion operations allocate nothing', () => {
-  it('fromYaw / multiply / rotateVec3 / slerp', () => {
-    assertNoAllocation('fromYaw', (i) => {
+describe('quaternion operations allocate nothing', () => {
+  it('fromYaw / multiply / rotateVec3 / slerp', async () => {
+    await assertNoAllocation('fromYaw', (i) => {
       fromYaw(qa, (i % 628) / 100);
     });
-    assertNoAllocation('multiply', () => {
+    await assertNoAllocation('multiply', () => {
       multiply(qa, qb, qc);
     });
-    assertNoAllocation('slerp', (i) => {
+    await assertNoAllocation('slerp', (i) => {
       slerp(qa, qb, qc, (i % 100) / 100);
     });
   });
 });
 
-todo('AABB operations allocate nothing', () => {
-  it('union / intersects / expandByPoint / closestPoint / distanceSqToPoint', () => {
-    assertNoAllocation('intersects', () => {
+describe('AABB operations allocate nothing', () => {
+  it('union / intersects / expandByPoint / closestPoint / distanceSqToPoint', async () => {
+    await assertNoAllocation('intersects', () => {
       intersects(boxA, boxB);
     });
-    assertNoAllocation('expandByPoint', () => {
+    await assertNoAllocation('expandByPoint', () => {
       expandByPoint(boxC, outA);
     });
-    assertNoAllocation('closestPoint', () => {
+    await assertNoAllocation('closestPoint', () => {
       closestPoint(outC, boxA, outB);
     });
-    assertNoAllocation('distanceSqToPoint', () => {
+    await assertNoAllocation('distanceSqToPoint', () => {
       distanceSqToPoint(boxA, outB);
     });
   });
 });
 
-todo('easing, spring and hash allocate nothing', () => {
-  it('easing curves, direct and by name', () => {
-    assertNoAllocation('cubicOut', (i) => {
+describe('easing, spring and hash allocate nothing', () => {
+  it('easing curves, direct and by name', async () => {
+    await assertNoAllocation('cubicOut', (i) => {
       cubicOut((i % 100) / 100);
     });
-    assertNoAllocation('applyEasing', (i) => {
+    await assertNoAllocation('applyEasing', (i) => {
       applyEasing('bounceOut', (i % 100) / 100);
     });
   });
 
-  it('spring stepping', () => {
-    assertNoAllocation('stepSpring3', () => {
+  it('spring stepping', async () => {
+    await assertNoAllocation('stepSpring3', () => {
       stepSpring3(spring3, 0.5, 1.5, 2.5, 12.5, 1 / 30);
     });
   });
 
-  it('hashing, including the DataView path for arbitrary numbers', () => {
-    assertNoAllocation('hashU32', (i) => {
+  it('hashing, including the DataView path for arbitrary numbers', async () => {
+    await assertNoAllocation('hashU32', (i) => {
       hashU32(i);
     });
-    assertNoAllocation('hashWords', (i) => {
+    await assertNoAllocation('hashWords', (i) => {
       hashWords(i, i + 1, i + 2);
     });
     // hashString over a constant: the string is not built per call, so this
     // measures the fold and not the caller's concatenation.
-    assertNoAllocation('hashString', () => {
+    await assertNoAllocation('hashString', () => {
       hashString('item.pine_plank');
     });
   });
@@ -286,55 +299,59 @@ describe('the no-op control actually ran', () => {
 });
 
 /**
- * Five operations this session could **not** clear, recorded as `todo` with
- * their measurements rather than dropped, loosened past, or asserted away.
+ * The five operations BL-004 could not clear, now cleared — and the reason they
+ * could not be is worth keeping, because it is a fact about instruments and not
+ * about this code.
  *
- * Each reports a stable figure — identical to two decimal places across runs,
- * so not noise — equal to **exactly one allocation of the object it returns**:
+ * Under the `heapUsed`-sampling harness each of these reported a stable figure,
+ * identical to two decimal places across runs, equal to **exactly one
+ * allocation of the object it returns**:
  *
- * | operation                    | bytes/op | that is             |
- * |------------------------------|----------|---------------------|
- * | `addScaled(out, a, b, s)`    | 47.04    | one `Vec3`          |
- * | `add(out, out, b)` (aliased) | 47.05    | one `Vec3`          |
- * | `rotateVec3(out, q, v)`      | 47.04    | one `Vec3`          |
- * | `union(out, a, b)`           | 92.16    | one `AABB`          |
- * | `stepSpring(s, t, ω, dt)`    | 16.2     | one boxed double    |
+ * | operation                    | old harness | that is          |
+ * |------------------------------|-------------|------------------|
+ * | `addScaled(out, a, b, s)`    | 47.04 B/op  | one `Vec3`       |
+ * | `add(out, out, b)` (aliased) | 47.05 B/op  | one `Vec3`       |
+ * | `rotateVec3(out, q, v)`      | 47.04 B/op  | one `Vec3`       |
+ * | `union(out, a, b)`           | 92.16 B/op  | one `AABB`       |
+ * | `stepSpring(s, t, ω, dt)`    | 16.2 B/op   | one boxed double |
  *
- * Their sources create no object: every one writes into the `out` the caller
- * passed and returns that same reference. The close neighbours of each — `add`
- * non-aliased, `cross` aliased, `multiply`, `intersection`'s siblings,
- * `stepSpring3`, which calls `stepSpring` three times — all measure at the
- * 0.1–0.4 bytes/op floor, which is what makes a source-level explanation
- * unconvincing and a V8 artefact of the *measurement* the likelier one.
+ * Reproducible, so not noise — and **the set changed when unrelated parts of
+ * this file changed**: `normalize` measured clean and `addScaled` dirty, and
+ * after moving five untouched cases into a `todo` block they swapped. That is
+ * what condemned the instrument rather than the code. It measured a
+ * process-wide quantity (`heapUsed` rises) and divided by *this* operation's
+ * iteration count, so any other allocation in the same process during the loop
+ * was charged here.
  *
- * Three hypotheses were tested and eliminated, each by measurement: a
- * megamorphic call site in the harness (fixed by giving every measurement its
- * own closure — figures unchanged), integer-versus-double field representation
- * in the scratch objects (fixed by constructing all scratch fractional — the
- * remaining figures went *up*, to exactly one object), and boxing of a returned
- * double (fixed by making `op` return `void` — it removed a real 6.2 bytes/op
- * from other cases but not these). Reproducing the same call in an isolated
- * script measures 0.01–0.10 bytes/op, so the effect does not survive outside
- * this file.
+ * `measureAttributedAllocation` attributes by **call site**, so it cannot make
+ * that mistake: another test's garbage lands under another test's frames. All
+ * five now read exactly 0 attributed bytes against a control of ~115 kB in the
+ * same process, on the same runs, as the 25 operations above.
  *
- * **BL-050** carries this. It is `todo` and not `skip`: the assertion is not
- * being suppressed to make a run green, it is unfinished work with its
- * measurements written down. The 25 operations above are verified.
+ * Three source-level hypotheses had been tested and eliminated by measurement
+ * before the instrument was suspected, and they are recorded in
+ * `allocationHarness.ts` because two of them were real effects worth knowing:
+ * a megamorphic call site in the harness (a genuine 47.04 B/op false positive),
+ * integer-versus-double field representation in scratch objects (a genuine
+ * 6.1 vs 0.3 B/op difference), and boxing of a returned double (a genuine
+ * 6.2 B/op). None of them explained these five.
  */
-todo('BL-050: the five originally-unexplained operations', () => {
-  assertNoAllocation('addScaled', (i) => {
-    addScaled(outC, outA, outB, (i % 7) + 0.5);
-  });
-  assertNoAllocation('add(out, out, b)', () => {
-    add(outC, outC, outB);
-  });
-  assertNoAllocation('rotateVec3', () => {
-    rotateVec3(outC, qb, outA);
-  });
-  assertNoAllocation('union', () => {
-    union(boxC, boxA, boxB);
-  });
-  assertNoAllocation('stepSpring', () => {
-    stepSpring(spring, 0.5, 12.5, 1 / 30);
+describe('BL-050: the five operations the old instrument could not clear', () => {
+  it('all five allocate nothing, measured by call site', async () => {
+    await assertNoAllocation('addScaled', (i) => {
+      addScaled(outC, outA, outB, (i % 7) + 0.5);
+    });
+    await assertNoAllocation('add(out, out, b)', () => {
+      add(outC, outC, outB);
+    });
+    await assertNoAllocation('rotateVec3', () => {
+      rotateVec3(outC, qb, outA);
+    });
+    await assertNoAllocation('union', () => {
+      union(boxC, boxA, boxB);
+    });
+    await assertNoAllocation('stepSpring', () => {
+      stepSpring(spring, 0.5, 12.5, 1 / 30);
+    });
   });
 });
