@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-055**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-056**.
 
 **Task format:**
 
@@ -39,19 +39,11 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-**BL-005 — Seeded RNG** (claimed 2026-08-11). Split on claim: the noise half is now BL-054.
+*(nothing — pick the topmost unblocked task from Ready)*
 
 ---
 
 ## Ready — Phase 0: Foundation
-
-### BL-005 — Seeded RNG
-- **Phase:** 0 · **Size:** S · **Depends on:** BL-004 · **Docs:** 04, 12
-- **Description:** mulberry32 PRNG and the named stream factory `rngFor(purpose, ...ints)` (`04` §4.2 line 88), plus the small set of draws every caller would otherwise re-derive. Deterministic and dependency-free.
-- **Acceptance criteria:**
-  - [ ] Identical output across Node and browser for a fixture of 10,000 values
-  - [ ] Named streams are independent (no correlation in a chi-square test)
-- **Notes:** **Split from the original "Seeded RNG and noise" on 2026-08-11**, when planning it showed one task carrying two unrelated bodies of work with two unrelated failure modes: a 32-bit integer recurrence whose risk is bit-exactness across engines, and a gradient-noise field whose risk is whether the surface looks right. The noise half is BL-054 and depends on this one. The third original criterion ("noise output matches golden fixtures") went with it; the two above are the ones that belong to the generator itself.
 
 ### BL-054 — Simplex noise, fbm, ridge and Poisson-disk sampling
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-005 · **Docs:** 04, 12
@@ -202,6 +194,14 @@ Current phase: **Phase 0 — Foundation**
 - **Acceptance criteria:**
   - [ ] The cap is a capability-tier value, with the constant as its default
   - [ ] A frame-time measurement at 1080p on at least one integrated GPU justifies the tier values
+
+### BL-055 — Fix the `AI_DEVELOPMENT_WORKFLOW.md` path that three files point at
+- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
+- **Description:** Filed 2026-08-11 while doing BL-005. `CLAUDE.md` ("Before you write code, every session", item 1) and this file ("For agents", step 1) both say `.github/AI_DEVELOPMENT_WORKFLOW.md`. That file does not exist: the workflow is at `docs/AI_DEVELOPMENT_WORKFLOW.md`, and `.github/AI_DEVELOPMENT_WORKFLOW` is an empty **directory**, which is probably how the mistake happened. Every session is told to read that file first and every session has to go and find it.
+- **Acceptance criteria:**
+  - [ ] The path in `CLAUDE.md` and in this file resolves to the real document
+  - [ ] The empty `.github/AI_DEVELOPMENT_WORKFLOW` directory is gone, or holds the file
+- **Notes:** Decide which location is canonical rather than adding a second copy — two copies of the session loop is worse than a wrong path, because a wrong path fails loudly.
 
 ### BL-053 — Drop `--expose-gc` from the test scripts
 - **Phase:** 0 · **Size:** S · **Depends on:** BL-050 · **Docs:** 29
@@ -373,6 +373,10 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-005 — Seeded RNG
+- **Completed:** 2026-08-11 · **PR:** — (pushed direct to `main`)
+- `sim/rng/Rng.ts`: mulberry32 with the `Math.imul`/`>>> 0` discipline, `rngFor(worldSeed, purpose, ...coords)` deriving stream seeds through the existing FNV-1a helpers, and the draws (`nextInt` with rejection sampling rather than a modulo, `nextRange`, `chance`, `pick`, Fisher–Yates `shuffle`). 32 tests; suite 174 pass / 0 fail / 0 todo, was 142. **Split on claim** — the noise half became BL-054, taking the golden-fixture criterion with it. Both remaining criteria met: the 10,000-value fixture (digest `9b901c2e`) reproduces in Node v22.22.2 and in Chromium 141 — **both V8, which the log entry states plainly rather than claiming two engines** — and six streams × 60,000 draws pass uniformity (7 df) and all 15 pairwise independence tests (49 df) against their 0.1% critical values, with a negative control proving the independence test rejects two identical streams. Also deleted `sim/_scaffold.ts`. Discovered work: BL-055.
 
 ### BL-003 — Vite app shell with a canvas and a black screen
 - **Completed:** 2026-08-09 · **PR:** — (pushed direct to `main`)

@@ -4,46 +4,43 @@
 
 ---
 
-## Status: IN_PROGRESS — BL-005 (Seeded RNG)
+## Status: IDLE
 
-**Selected by the rule, not by preference.** `AI_DEVELOPMENT_WORKFLOW.md` §2 says
-the topmost unblocked task in the current phase's Ready list. That is **BL-005**:
-it sits at the top of Phase 0's Ready list and its only dependency, BL-004, closed
-on 2026-08-13. The previous session's handoff below names BL-015 as topmost, which
-was a slip — BL-005 through BL-014 all sit above it and BL-005 is not blocked.
-Nothing about BL-015 changed; it is still there, ten places down.
+No task in progress. **BL-005 is complete** — both of its acceptance criteria are
+met (the noise half was split out as BL-054 on claim). See
+`34_DEVELOPMENT_LOG.md` 2026-08-11 for the measurements.
 
-## Split made on claim
+## Next action for an agent
 
-Planning it (workflow §3, "if the plan reveals the task is mis-sized, split it in
-`32`") showed one task carrying two unrelated bodies of work with two unrelated
-failure modes: a 32-bit integer recurrence whose risk is bit-exactness across
-engines, and a gradient-noise field whose risk is whether the surface looks
-right. The noise half is now **BL-054**, depending on this one. BL-005 keeps the
-two criteria that belong to the generator; the golden-fixture criterion went with
-the noise.
+The topmost unblocked task in Phase 0's Ready list, per
+`docs/AI_DEVELOPMENT_WORKFLOW.md` §2. As of this session that is **BL-054**
+(simplex noise, fbm, ridge, Poisson-disk), which now sits where BL-005 was and
+whose only dependency just closed.
 
-## Plan
+**Read the file, do not trust this line.** The previous handoff named BL-015 as
+topmost when BL-005 through BL-014 all sat above it, and following it would have
+skipped ten tasks. The list is the authority; this paragraph is a convenience.
 
-1. `sim/rng/Rng.ts` — mulberry32, the `04` §4.2 algorithm, with the `Math.imul` /
-   `>>> 0` discipline `core/math/hash.ts` already establishes for the same reason.
-2. `rngFor(purpose, ...ints)` — derive a stream seed from the world seed, the
-   purpose string and the integer coordinates, through the existing FNV-1a
-   helpers rather than a second hash.
-3. The draws callers would otherwise re-derive: `nextFloat`, `nextInt`,
-   `nextRange`, `pick`, `shuffle`, `chance`.
-4. A 10,000-value golden fixture, committed, asserted in Node.
-5. Independence: chi-square on each stream's uniformity, and pairwise on stream
-   agreement, with the critical values stated rather than eyeballed.
-6. Update `32`/`33`/`34`; decision log if anything architectural comes up.
+## Three things BL-054 will want from BL-005
 
-## Open question this task must answer honestly
+1. `rngFor(worldSeed, 'scatter', chunkX, chunkZ)` already gives Poisson-disk the
+   per-chunk stream `12` §"Runs in a Web Worker" requires, and `Rng.test.ts`
+   already proves chunk order does not matter — that criterion of BL-054 is
+   about the *sampler* preserving the property, not about re-establishing it.
+2. `RngState` is a plain `{ s }` object the caller owns, so a sampler can
+   snapshot, store or serialise a stream position. Do not wrap it in a closure.
+3. Noise needs a *permutation table*, and `shuffle` is right there and is tested
+   for permutation-level uniformity, not just element-level. Build the table
+   from a named stream rather than hard-coding Ken Perlin's 256 values, so the
+   field moves with the world seed.
 
-The first criterion says "across Node and browser". Playwright is BL-016 and is
-not set up, so a committed browser test cannot exist yet. Either the browser half
-is measured some other way and recorded, or the criterion stays open and says so.
-Do not mark it met on the strength of "the operations are all spec-exact" — that
-is the argument, not the measurement.
+## One thing to be careful about, learned the hard way this session
+
+`noUncheckedIndexedAccess` applies to **typed arrays** as well as plain arrays,
+so reaching for an `Int32Array` to escape the `!` ban does not work. Noise code
+is full of index arithmetic and will hit this constantly. `Rng.test.ts` has the
+pattern that satisfies the linter honestly (a small `at()` accessor whose
+fallback is unreachable by construction, documented as such).
 
 ---
 
