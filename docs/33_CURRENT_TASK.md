@@ -4,16 +4,48 @@
 
 ---
 
-## Status: IDLE
+## Status: IN_PROGRESS — BL-005 (Seeded RNG)
 
-No task in progress. **BL-004 is complete** — its last open acceptance criterion
-was signed off on 2026-08-13 by doing BL-050.
+**Selected by the rule, not by preference.** `AI_DEVELOPMENT_WORKFLOW.md` §2 says
+the topmost unblocked task in the current phase's Ready list. That is **BL-005**:
+it sits at the top of Phase 0's Ready list and its only dependency, BL-004, closed
+on 2026-08-13. The previous session's handoff below names BL-015 as topmost, which
+was a slip — BL-005 through BL-014 all sit above it and BL-005 is not blocked.
+Nothing about BL-015 changed; it is still there, ten places down.
 
-## Next action for an agent
+## Split made on claim
 
-Take the topmost unblocked task in Phase 0 from `32_BACKLOG.md` → Ready. That is
-**BL-015** (Vitest + the sim harness) unless the backlog has moved: BL-004 is no
-longer blocking anything, and the gate gap below is what BL-015 closes.
+Planning it (workflow §3, "if the plan reveals the task is mis-sized, split it in
+`32`") showed one task carrying two unrelated bodies of work with two unrelated
+failure modes: a 32-bit integer recurrence whose risk is bit-exactness across
+engines, and a gradient-noise field whose risk is whether the surface looks
+right. The noise half is now **BL-054**, depending on this one. BL-005 keeps the
+two criteria that belong to the generator; the golden-fixture criterion went with
+the noise.
+
+## Plan
+
+1. `sim/rng/Rng.ts` — mulberry32, the `04` §4.2 algorithm, with the `Math.imul` /
+   `>>> 0` discipline `core/math/hash.ts` already establishes for the same reason.
+2. `rngFor(purpose, ...ints)` — derive a stream seed from the world seed, the
+   purpose string and the integer coordinates, through the existing FNV-1a
+   helpers rather than a second hash.
+3. The draws callers would otherwise re-derive: `nextFloat`, `nextInt`,
+   `nextRange`, `pick`, `shuffle`, `chance`.
+4. A 10,000-value golden fixture, committed, asserted in Node.
+5. Independence: chi-square on each stream's uniformity, and pairwise on stream
+   agreement, with the critical values stated rather than eyeballed.
+6. Update `32`/`33`/`34`; decision log if anything architectural comes up.
+
+## Open question this task must answer honestly
+
+The first criterion says "across Node and browser". Playwright is BL-016 and is
+not set up, so a committed browser test cannot exist yet. Either the browser half
+is measured some other way and recorded, or the criterion stays open and says so.
+Do not mark it met on the strength of "the operations are all spec-exact" — that
+is the argument, not the measurement.
+
+---
 
 ---
 

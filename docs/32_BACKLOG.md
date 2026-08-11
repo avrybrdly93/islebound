@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-053**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-055**.
 
 **Task format:**
 
@@ -39,19 +39,27 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-*(nothing — pick the topmost unblocked task from Ready)*
+**BL-005 — Seeded RNG** (claimed 2026-08-11). Split on claim: the noise half is now BL-054.
 
 ---
 
 ## Ready — Phase 0: Foundation
 
-### BL-005 — Seeded RNG and noise
-- **Phase:** 0 · **Size:** M · **Depends on:** BL-004 · **Docs:** 04, 12
-- **Description:** mulberry32 PRNG, named stream factory `rngFor(purpose, ...ints)`, 2D/3D simplex noise, fbm, ridge noise, Poisson-disk sampling. All deterministic and dependency-free.
+### BL-005 — Seeded RNG
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-004 · **Docs:** 04, 12
+- **Description:** mulberry32 PRNG and the named stream factory `rngFor(purpose, ...ints)` (`04` §4.2 line 88), plus the small set of draws every caller would otherwise re-derive. Deterministic and dependency-free.
 - **Acceptance criteria:**
   - [ ] Identical output across Node and browser for a fixture of 10,000 values
   - [ ] Named streams are independent (no correlation in a chi-square test)
+- **Notes:** **Split from the original "Seeded RNG and noise" on 2026-08-11**, when planning it showed one task carrying two unrelated bodies of work with two unrelated failure modes: a 32-bit integer recurrence whose risk is bit-exactness across engines, and a gradient-noise field whose risk is whether the surface looks right. The noise half is BL-054 and depends on this one. The third original criterion ("noise output matches golden fixtures") went with it; the two above are the ones that belong to the generator itself.
+
+### BL-054 — Simplex noise, fbm, ridge and Poisson-disk sampling
+- **Phase:** 0 · **Size:** M · **Depends on:** BL-005 · **Docs:** 04, 12
+- **Description:** 2D/3D simplex noise, fbm, ridge noise and Poisson-disk sampling, all drawing from BL-005's streams. This is the second half of the original BL-005; see its notes for why they were separated.
+- **Acceptance criteria:**
   - [ ] Noise output matches golden fixtures
+  - [ ] Poisson-disk sampling per chunk uses `rngFor('scatter', chunkX, chunkZ)` and produces the same set whatever order chunks are generated in (`12` §"Runs in a Web Worker", the streaming requirement)
+  - [ ] Output range and mean are measured and documented, not assumed
 
 ### BL-006 — Typed event bus
 - **Phase:** 0 · **Size:** S · **Depends on:** BL-001 · **Docs:** 04
