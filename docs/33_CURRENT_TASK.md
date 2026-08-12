@@ -4,43 +4,32 @@
 
 ---
 
-## Status: IDLE
+## Status: IN PROGRESS — BL-054 (simplex noise, fbm, ridge)
 
-No task in progress. **BL-005 is complete** — both of its acceptance criteria are
-met (the noise half was split out as BL-054 on claim). See
-`34_DEVELOPMENT_LOG.md` 2026-08-11 for the measurements.
+Claimed 2026-08-12. It was the topmost unblocked task in Phase 0's Ready list,
+as the previous handoff said it would be — and the list was re-read rather than
+trusted, per that handoff's own warning.
 
-## Next action for an agent
+**Split on claim, and BL-005 is the precedent.** The Poisson-disk half went out
+as **BL-056**, taking its chunk-order acceptance criterion with it. The two
+halves share only their seed source: noise is a pure lattice function of
+position that threads no `RngState` at all — only a permutation table built once
+from a stream — while Poisson-disk is a sampler that consumes a stream, and its
+criterion is about chunk-order independence rather than about any field.
 
-The topmost unblocked task in Phase 0's Ready list, per
-`docs/AI_DEVELOPMENT_WORKFLOW.md` §2. As of this session that is **BL-054**
-(simplex noise, fbm, ridge, Poisson-disk), which now sits where BL-005 was and
-whose only dependency just closed.
+### Scope
 
-**Read the file, do not trust this line.** The previous handoff named BL-015 as
-topmost when BL-005 through BL-014 all sat above it, and following it would have
-skipped ten tasks. The list is the authority; this paragraph is a convenience.
+- `sim/noise/Simplex.ts` — 2D and 3D simplex, permutation table from
+  `rngFor(worldSeed, 'noise')`, plus `fbm` and `ridge` over either.
+- Golden fixtures, in the digest-plus-spot-values form `Rng.test.ts` uses.
+- Range and mean **measured**, not assumed — this is the criterion most likely
+  to be quietly failed, since simplex's theoretical range is not the range the
+  usual scaling constants actually produce.
 
-## Three things BL-054 will want from BL-005
+### Acceptance criteria
 
-1. `rngFor(worldSeed, 'scatter', chunkX, chunkZ)` already gives Poisson-disk the
-   per-chunk stream `12` §"Runs in a Web Worker" requires, and `Rng.test.ts`
-   already proves chunk order does not matter — that criterion of BL-054 is
-   about the *sampler* preserving the property, not about re-establishing it.
-2. `RngState` is a plain `{ s }` object the caller owns, so a sampler can
-   snapshot, store or serialise a stream position. Do not wrap it in a closure.
-3. Noise needs a *permutation table*, and `shuffle` is right there and is tested
-   for permutation-level uniformity, not just element-level. Build the table
-   from a named stream rather than hard-coding Ken Perlin's 256 values, so the
-   field moves with the world seed.
-
-## One thing to be careful about, learned the hard way this session
-
-`noUncheckedIndexedAccess` applies to **typed arrays** as well as plain arrays,
-so reaching for an `Int32Array` to escape the `!` ban does not work. Noise code
-is full of index arithmetic and will hit this constantly. `Rng.test.ts` has the
-pattern that satisfies the linter honestly (a small `at()` accessor whose
-fallback is unreachable by construction, documented as such).
+- [ ] Noise output matches golden fixtures
+- [ ] Output range and mean are measured and documented, not assumed
 
 ---
 

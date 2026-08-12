@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-056**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-057**.
 
 **Task format:**
 
@@ -39,19 +39,27 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-*(nothing — pick the topmost unblocked task from Ready)*
+### BL-054 — Simplex noise, fbm and ridge
+- **Phase:** 0 · **Size:** M · **Depends on:** BL-005 · **Docs:** 04, 12
+- **Claimed:** 2026-08-12. **Split on claim**, exactly as BL-005 was: the Poisson-disk half became **BL-056** and took its own acceptance criterion with it. Reason below.
+- **Description:** 2D/3D simplex noise, fbm and ridge noise, all drawing from BL-005's streams.
+- **Acceptance criteria:**
+  - [ ] Noise output matches golden fixtures
+  - [ ] Output range and mean are measured and documented, not assumed
+- **Why the split:** the two halves share only their seed source. Noise is a pure lattice function of position — no `RngState` is threaded through it at all, only a permutation table built once from a stream — while Poisson-disk is a *sampler* that consumes a stream and whose acceptance criterion is about chunk-order independence, a property of the stream keying rather than of any field. Landing them together would put a bit-exact fixture criterion and a set-equality criterion in one commit with nothing in common but the word "random". BL-005 split for the same reason and the split was right.
 
 ---
 
 ## Ready — Phase 0: Foundation
 
-### BL-054 — Simplex noise, fbm, ridge and Poisson-disk sampling
-- **Phase:** 0 · **Size:** M · **Depends on:** BL-005 · **Docs:** 04, 12
-- **Description:** 2D/3D simplex noise, fbm, ridge noise and Poisson-disk sampling, all drawing from BL-005's streams. This is the second half of the original BL-005; see its notes for why they were separated.
+### BL-056 — Poisson-disk sampling per chunk
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-005 · **Docs:** 04, 12
+- **Description:** Poisson-disk (Bridson) sampling over a chunk, drawing from `rngFor(worldSeed, 'scatter', chunkX, chunkZ)`. Split out of BL-054 on claim 2026-08-12 — see BL-054's note for why.
 - **Acceptance criteria:**
-  - [ ] Noise output matches golden fixtures
   - [ ] Poisson-disk sampling per chunk uses `rngFor('scatter', chunkX, chunkZ)` and produces the same set whatever order chunks are generated in (`12` §"Runs in a Web Worker", the streaming requirement)
-  - [ ] Output range and mean are measured and documented, not assumed
+  - [ ] No two samples closer than the radius, measured over many chunks rather than asserted from the algorithm
+  - [ ] Samples near a chunk edge do not violate the radius against the neighbouring chunk's samples, **or** that limitation is documented as accepted with the reason
+- **Notes:** the chunk-order criterion is already half-established: `Rng.test.ts` proves the streams are independent and order-free, so what remains is proving the *sampler* preserves it — same seed, same set, regardless of when the chunk is generated. The edge criterion is the one with a real design decision in it; `12` should be read before choosing.
 
 ### BL-006 — Typed event bus
 - **Phase:** 0 · **Size:** S · **Depends on:** BL-001 · **Docs:** 04
