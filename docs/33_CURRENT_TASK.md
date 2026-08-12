@@ -4,32 +4,55 @@
 
 ---
 
-## Status: IN PROGRESS — BL-054 (simplex noise, fbm, ridge)
+## Status: IDLE
 
-Claimed 2026-08-12. It was the topmost unblocked task in Phase 0's Ready list,
-as the previous handoff said it would be — and the list was re-read rather than
-trusted, per that handoff's own warning.
+No task in progress. **BL-054 is complete** — both of its acceptance criteria are
+met (the Poisson-disk half was split out as BL-056 on claim). See
+`34_DEVELOPMENT_LOG.md` 2026-08-12 for the measurements and for the continuity
+test that had to be rewritten.
 
-**Split on claim, and BL-005 is the precedent.** The Poisson-disk half went out
-as **BL-056**, taking its chunk-order acceptance criterion with it. The two
-halves share only their seed source: noise is a pure lattice function of
-position that threads no `RngState` at all — only a permutation table built once
-from a stream — while Poisson-disk is a sampler that consumes a stream, and its
-criterion is about chunk-order independence rather than about any field.
+## Next action for an agent
 
-### Scope
+The topmost unblocked task in Phase 0's Ready list, per
+`docs/AI_DEVELOPMENT_WORKFLOW.md` §2. As of this session that is **BL-056**
+(Poisson-disk sampling per chunk), which now sits where BL-054 was and whose
+only dependency, BL-005, closed two sessions ago.
 
-- `sim/noise/Simplex.ts` — 2D and 3D simplex, permutation table from
-  `rngFor(worldSeed, 'noise')`, plus `fbm` and `ridge` over either.
-- Golden fixtures, in the digest-plus-spot-values form `Rng.test.ts` uses.
-- Range and mean **measured**, not assumed — this is the criterion most likely
-  to be quietly failed, since simplex's theoretical range is not the range the
-  usual scaling constants actually produce.
+**Read the file, do not trust this line.** Two handoffs ago this paragraph named
+a task with ten unstarted ones above it. The list is the authority; this
+paragraph is a convenience.
 
-### Acceptance criteria
+## Four things BL-056 will want
 
-- [ ] Noise output matches golden fixtures
-- [ ] Output range and mean are measured and documented, not assumed
+1. `rngFor(worldSeed, 'scatter', chunkX, chunkZ)` already gives the per-chunk
+   stream `12` §"Runs in a Web Worker" requires, and `Rng.test.ts` already
+   proves chunk order does not matter for the *streams*. BL-056's criterion is
+   therefore about the **sampler** preserving that, not about re-establishing
+   it: same seed, same set, whenever the chunk is generated.
+2. `RngState` is a plain `{ s }` object the caller owns. Bridson's algorithm
+   wants an active list and repeated draws from one stream, which is exactly
+   what it is for — unlike noise, which threads no state at all.
+3. **The edge case is the one with a real decision in it.** Samples near a chunk
+   boundary can violate the radius against the neighbouring chunk's samples, and
+   the three honest options are: sample a margin beyond the chunk and discard,
+   consult the eight neighbours' streams (which reintroduces a dependency
+   between chunks and needs care to stay order-free), or accept the violation
+   and document why. Read `12` before choosing; the criterion allows the third
+   *if the reason is written down*.
+4. `sim/noise/Simplex.ts` is next door and needs nothing from BL-056. If a
+   density field is wanted to modulate the sampling, `fbm2D` is there — but note
+   its measured range is about ±0.86, not ±1, so a naive remap to [0, 1] leaves
+   headroom at both ends. The table is in `34_DEVELOPMENT_LOG.md`.
+
+## One thing this session learned that generalises
+
+**A test that passes and looks thorough is the failure mode to watch for here.**
+BL-054's continuity check asserted a bound on the worst jump over a small step.
+It passed, it read as rigorous, and it did not detect a deliberately broken
+falloff constant — the broken field's worst jump was 0.147 against a bound of
+0.35. The perturbation is the only reason that is known. If a test is meant to
+catch a specific failure, break the code on purpose and watch it go red before
+believing it.
 
 ---
 

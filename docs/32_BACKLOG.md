@@ -39,14 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-### BL-054 — Simplex noise, fbm and ridge
-- **Phase:** 0 · **Size:** M · **Depends on:** BL-005 · **Docs:** 04, 12
-- **Claimed:** 2026-08-12. **Split on claim**, exactly as BL-005 was: the Poisson-disk half became **BL-056** and took its own acceptance criterion with it. Reason below.
-- **Description:** 2D/3D simplex noise, fbm and ridge noise, all drawing from BL-005's streams.
-- **Acceptance criteria:**
-  - [ ] Noise output matches golden fixtures
-  - [ ] Output range and mean are measured and documented, not assumed
-- **Why the split:** the two halves share only their seed source. Noise is a pure lattice function of position — no `RngState` is threaded through it at all, only a permutation table built once from a stream — while Poisson-disk is a *sampler* that consumes a stream and whose acceptance criterion is about chunk-order independence, a property of the stream keying rather than of any field. Landing them together would put a bit-exact fixture criterion and a set-equality criterion in one commit with nothing in common but the word "random". BL-005 split for the same reason and the split was right.
+*(nothing — pick the topmost unblocked task from Ready)*
 
 ---
 
@@ -381,6 +374,10 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-054 — Simplex noise, fbm and ridge
+- **Completed:** 2026-08-12 · **PR:** — (pushed direct to a `claude/*` branch)
+- `sim/noise/Simplex.ts`: 2D/3D simplex over a permutation table shuffled once from `rngFor(worldSeed, purpose)`, plus `fbm2D`/`fbm3D` and `ridge2D`/`ridge3D`. **No `RngState` is threaded through any of it** — noise is a field, and a generator consumed per sample would destroy exactly the property terrain streaming needs. 15 tests; suite 189 pass / 0 fail / 0 todo, was 174. **Split on claim** — the Poisson-disk half became BL-056, taking its chunk-order criterion with it, exactly as BL-005 split this task out. Both remaining criteria met: the four digests plus six spot values reproduce, and range and mean are measured over 160,000 samples and tabulated in `34_DEVELOPMENT_LOG.md` rather than assumed — including the two findings that measurement is for, that the base range is near but not exactly ±1 and that fbm is ~15% narrower than its base noise because the normaliser divides by a worst case the octaves rarely reach. **The continuity test's first version did not work and the log says so**: a bound on the raw jump passes a field with the falloff perturbed to 0.6; what catches it is the worst *slope* growing as the step shrinks (6.4455→6.4463 correct, 22.02→110.03 perturbed). Discovered work: BL-056.
 
 ### BL-005 — Seeded RNG
 - **Completed:** 2026-08-11 · **PR:** — (pushed direct to `main`)

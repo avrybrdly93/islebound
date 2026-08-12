@@ -34,6 +34,120 @@ What was added, and what it protects.
 
 ---
 
+## 2026-08-12 — BL-054 Simplex noise, fbm and ridge
+
+**Type:** feature
+**Phase:** 0
+**PR:** — (pushed direct to a `claude/*` branch)
+**Time:** ~1.5h
+
+### What changed
+`sim/noise/Simplex.ts`: 2D and 3D simplex noise, `fbm2D`/`fbm3D` and
+`ridge2D`/`ridge3D`, over a permutation table built once from
+`rngFor(worldSeed, purpose)`. Split on claim — the Poisson-disk half went out as
+**BL-056**, exactly as BL-005 split the noise half out, and took its chunk-order
+acceptance criterion with it. Both remaining criteria are met.
+
+### Why it was done this way
+**No `RngState` is threaded through any of it.** Noise is a field: a pure
+function of position. That is precisely what terrain streaming needs — a chunk's
+heights cannot depend on which chunks were generated before it — and a generator
+consumed per sample would destroy it. The seed enters once, when the permutation
+table is shuffled. `purpose` is a parameter so terrain, caves and moisture can
+each hold an independent lattice rather than correlated ones, and the field is a
+value the caller holds because `sim/` has no module-level mutable state.
+
+**The split.** The two halves of the original BL-054 share only their seed
+source. Landing them together would have put a bit-exact fixture criterion and a
+set-equality criterion in one commit with nothing in common but the word
+"random".
+
+**fbm normalises by the amplitude sum it actually used**, not by a fixed
+constant. The fixed divisor is the common shortcut and it makes the output range
+depend on settings a caller thinks are cosmetic — terrain that gets flatter when
+you add detail. **`ridge` returns [0, 1]**, a different range from everything
+else here, because a ridge field is a height mask and a mask with negative
+values has to be remapped by every caller.
+
+**Nothing clamps.** The scale constants are empirical and the code says so
+rather than claiming a ±1 guarantee it does not have; a silent clamp would hide
+a scaling mistake instead of revealing one.
+
+### Surprises
+
+**The first continuity test did not work, and the perturbation is the only
+reason that is known.** A wrong falloff constant leaves a corner contributing
+past the simplex boundary and the field steps discontinuously — creases in
+terrain, and a failure a golden digest blesses happily, since the broken field
+is perfectly reproducible. The obvious test is a bound on the worst jump over a
+small step. It does not catch it: with the 2D falloff perturbed from 0.5 to 0.6
+the worst jump over a 0.01 step is **0.147**, comfortably inside any bound loose
+enough to pass the correct field's 0.064.
+
+What separates them is how the worst *slope* behaves as the step shrinks. A
+continuous field is locally Lipschitz, so `|Δn|/Δx` converges to its largest
+gradient and stops moving; a discontinuity is a fixed jump over a shrinking step
+and grows about tenfold per decade:
+
+| step | correct | falloff perturbed to 0.6 |
+|---|---|---|
+| 1e-3 | 6.4455 | 22.02 |
+| 1e-4 | 6.4463 | 110.03 |
+| **ratio** | **1.0001** | **5.00** |
+
+The test now asserts that ratio stays under 1.5, which sits an order of
+magnitude from both. Recorded at length because the weak version passed, looked
+thorough, and would have shipped.
+
+**`noise2D(0.5, 0.5)` and `noise3D(0.5, 0.5, 0.5)` are both exactly 0.** A real
+value, and a uselessly weak spot check — an implementation returning 0 for
+everything passes it — so the spot values were moved off half-integers.
+
+### Tests
+15 cases in `Simplex.test.ts`; suite **189 pass / 0 fail / 0 todo**, was 174.
+`pnpm typecheck`, `lint`, `lint:rules` and `format:check` all green.
+
+The fixtures are stated for what they are. A digest recorded from this
+implementation's own output is a *regression* fixture — it proves the field has
+not moved — not an independent oracle, and no amount of it would catch simplex
+having been wrong on day one. `Rng.test.ts` records the same limit. So the
+digests are paired with checks that do not consult the implementation: fbm with
+one octave must equal its base noise exactly (catches the fixed-divisor
+shortcut), fbm with zero persistence must equal its first octave whatever the
+octave count (catches a divisor of the *octave count*, which passes the first
+check), one octave of ridge must equal `(1 − |n|)²`, the permutation table must
+have no duplicate, and the continuity check above.
+
+**Measured range and mean** — 160,000 samples on a 400×400 lattice at 0.137
+spacing, seed `'HALC'`, Node v22.22.2 — which is the second acceptance criterion
+and is documented rather than assumed:
+
+| field | min | max | mean |
+|---|---|---|---|
+| `noise2D` | −0.998 | 0.998 | −0.00049 |
+| `noise3D` | −0.973 | 0.974 | −0.0016 |
+| `fbm2D` | −0.861 | 0.854 | −0.00041 |
+| `fbm3D` | −0.823 | 0.841 | −0.0011 |
+| `ridge2D` | 0.0085 | 1.000 | 0.421 |
+| `ridge3D` | 0.022 | 1.000 | 0.476 |
+
+Two rows deserve a caller's attention and are why the criterion asks for
+measurement. **The base range is close to ±1 but is not ±1 and is not guaranteed
+to be** — code needing a hard bound must clamp. And **fbm is materially narrower
+than its base noise**, about ±0.86 against ±1.0, because octaves rarely peak
+together while the normaliser divides by the worst case: terrain scaled as
+though fbm reached ±1 comes out roughly 15% flatter than intended.
+
+Three perturbations applied and reverted, none touching the working tree beyond
+a restore: the falloff constant (7 cases fail), the fbm normaliser replaced by
+the octave count (4 fail), and the earlier falloff run that exposed the weak
+continuity test.
+
+### Follow-ups
+- **BL-056** — Poisson-disk sampling per chunk, split out of this task on claim.
+
+---
+
 ## 2026-08-11 — BL-005 Seeded RNG (mulberry32 + named streams)
 
 **Type:** feature
