@@ -39,7 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-*(nothing — pick the topmost unblocked task from Ready)*
+- **BL-054** — Simplex noise, fbm, ridge and Poisson-disk sampling (claimed 2026-08-15)
 
 ---
 

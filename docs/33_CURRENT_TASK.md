@@ -4,43 +4,42 @@
 
 ---
 
-## Status: IDLE
+## Status: IN PROGRESS — BL-054
 
-No task in progress. **BL-005 is complete** — both of its acceptance criteria are
-met (the noise half was split out as BL-054 on claim). See
-`34_DEVELOPMENT_LOG.md` 2026-08-11 for the measurements.
+**Simplex noise, fbm, ridge and Poisson-disk sampling.** The topmost unblocked
+task in Phase 0's Ready list, and the second half of BL-005, whose noise
+criterion was split out on claim. Verified against `32_BACKLOG.md` rather than
+taken from the previous handoff's convenience line.
 
-## Next action for an agent
+### Acceptance criteria (from `32_BACKLOG.md`)
 
-The topmost unblocked task in Phase 0's Ready list, per
-`docs/AI_DEVELOPMENT_WORKFLOW.md` §2. As of this session that is **BL-054**
-(simplex noise, fbm, ridge, Poisson-disk), which now sits where BL-005 was and
-whose only dependency just closed.
+1. Noise output matches golden fixtures
+2. Poisson-disk sampling per chunk uses `rngFor('scatter', chunkX, chunkZ)` and
+   produces the same set whatever order chunks are generated in
+   (`12` §"Runs in a Web Worker")
+3. Output range and mean are measured and documented, not assumed
 
-**Read the file, do not trust this line.** The previous handoff named BL-015 as
-topmost when BL-005 through BL-014 all sat above it, and following it would have
-skipped ten tasks. The list is the authority; this paragraph is a convenience.
+### Files expected to change
 
-## Three things BL-054 will want from BL-005
+- `packages/client/src/sim/noise/Noise.ts` (new) — simplex 2D/3D, fbm, ridge
+- `packages/client/src/sim/noise/PoissonDisk.ts` (new)
+- their `.test.ts` siblings
+- `docs/32_BACKLOG.md`, `docs/33_CURRENT_TASK.md`, `docs/34_DEVELOPMENT_LOG.md`
 
-1. `rngFor(worldSeed, 'scatter', chunkX, chunkZ)` already gives Poisson-disk the
-   per-chunk stream `12` §"Runs in a Web Worker" requires, and `Rng.test.ts`
-   already proves chunk order does not matter — that criterion of BL-054 is
-   about the *sampler* preserving the property, not about re-establishing it.
-2. `RngState` is a plain `{ s }` object the caller owns, so a sampler can
-   snapshot, store or serialise a stream position. Do not wrap it in a closure.
-3. Noise needs a *permutation table*, and `shuffle` is right there and is tested
-   for permutation-level uniformity, not just element-level. Build the table
-   from a named stream rather than hard-coding Ken Perlin's 256 values, so the
-   field moves with the world seed.
+### The determinism decision this task turns on
 
-## One thing to be careful about, learned the hard way this session
+`04` §3 pins "hand-rolled ... + simplex — determinism must be ours, not a
+library's", and BL-005's module header makes the bit-exactness argument
+precisely: every operation it uses is exactly specified by ECMA-262, and it
+names reaching for `Math.sin` as a mixer as the mistake that would break it.
 
-`noUncheckedIndexedAccess` applies to **typed arrays** as well as plain arrays,
-so reaching for an `Int32Array` to escape the `!` ban does not work. Noise code
-is full of index arithmetic and will hit this constantly. `Rng.test.ts` has the
-pattern that satisfies the linter honestly (a small `at()` accessor whose
-fallback is unreachable by construction, documented as such).
+**Simplex noise reintroduces exactly that hazard through `Math.sqrt`.** The
+skew constants are conventionally written `F2 = (sqrt(3) - 1)/2` and
+`G2 = (3 - sqrt(3))/6`, and ECMA-262 specifies `Math.sqrt` as
+*implementation-approximated* — the same latitude that makes `Math.sin`
+unusable here. So this module computes no square root at run time: the skew
+constants are committed as decimal literals, and Poisson-disk compares squared
+distances. `Math.floor`, `Math.imul`, `+`, `*` and comparison are all exact.
 
 ---
 
