@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-056**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-057**.
 
 **Task format:**
 
@@ -39,19 +39,20 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-- **BL-054** — Simplex noise, fbm, ridge and Poisson-disk sampling (claimed 2026-08-15)
+*(nothing — pick the topmost unblocked task from Ready)*
 
 ---
 
 ## Ready — Phase 0: Foundation
 
-### BL-054 — Simplex noise, fbm, ridge and Poisson-disk sampling
-- **Phase:** 0 · **Size:** M · **Depends on:** BL-005 · **Docs:** 04, 12
-- **Description:** 2D/3D simplex noise, fbm, ridge noise and Poisson-disk sampling, all drawing from BL-005's streams. This is the second half of the original BL-005; see its notes for why they were separated.
+### BL-056 — Decide the Poisson-disk chunk-seam policy
+- **Phase:** 1 · **Size:** S · **Depends on:** BL-054 · **Docs to read:** 12
+- **Description:** BL-054's sampler enforces the minimum distance *within* a chunk only, so a point near an edge can land within `radius` of a point in the neighbour. That is the deliberate price of `12` §"Runs in a Web Worker"'s order-independence requirement — a chunk that consulted its neighbours would no longer be generatable in any order — but nobody has looked at whether it is visible.
 - **Acceptance criteria:**
-  - [ ] Noise output matches golden fixtures
-  - [ ] Poisson-disk sampling per chunk uses `rngFor('scatter', chunkX, chunkZ)` and produces the same set whatever order chunks are generated in (`12` §"Runs in a Web Worker", the streaming requirement)
-  - [ ] Output range and mean are measured and documented, not assumed
+  - [ ] The seam is rendered and judged at the scatter densities `12` actually uses, not in the abstract
+  - [ ] If it needs fixing, the fix preserves order-independence (the standard technique is to sample a chunk's own points *and* its 8 neighbours' from their own streams, keeping only the centre chunk's — deterministic, at 9x the sampling cost)
+  - [ ] Whatever is decided is recorded in `40_DECISION_LOG.md`
+- **Notes:** Filed 2026-08-15 by BL-054 rather than fixed inline: it is a judgement about how the island looks, it needs the renderer to answer, and guessing now would either cost 9x for nothing or bake in an artefact. `12` §"Scatter" already softens the visual consequence with clumping, so it may well be invisible.
 
 ### BL-006 — Typed event bus
 - **Phase:** 0 · **Size:** S · **Depends on:** BL-001 · **Docs:** 04
@@ -373,6 +374,11 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-054 — Simplex noise, fbm, ridge and Poisson-disk sampling
+- **Completed:** 2026-08-15 · **PR:** — (pushed direct to `main`)
+- `sim/noise/Noise.ts` (simplex2, simplex3, fbm, ridgeNoise, `NoiseField`) and `sim/noise/PoissonDisk.ts` (Bridson, per chunk). 38 tests; suite **212 pass / 0 fail / 0 todo**, was 174. All three criteria met: golden digests `d6351fb8` (simplex2) and `aa0c0d90` (simplex3) over 5,000 samples each, both with a tamper case; order-independence proved element-for-element across reversed and interleaved generation, with the negative control that different chunks must differ; and range/mean **measured** over 20,000 samples — simplex2 `[-0.99626, 0.99030]` mean `-0.00086`, simplex3 `[-0.96545, 0.96750]` mean `0.00564`, fbm at the terrain octaves `[-0.75777, 0.85539]` mean `-0.00019`, ridge `[0.02001, 0.99579]` mean `0.43331`. **No square root, sine, cosine or power runs at play time** — the skew constants are committed literals and Bridson's candidates are drawn by rejection from a square annulus, because ECMA-262 specifies all of those as implementation-approximated and `Rng.ts`'s determinism argument does not survive them. Discovered work: BL-056. Surprise: `tools/check-sim-purity.ts` is referenced in the present tense by `CLAUDE.md`, `06` and `Rng.ts` and does not exist — it is BL-017, still open.
+
 
 ### BL-005 — Seeded RNG
 - **Completed:** 2026-08-11 · **PR:** — (pushed direct to `main`)

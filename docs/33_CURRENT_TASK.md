@@ -4,42 +4,52 @@
 
 ---
 
-## Status: IN PROGRESS — BL-054
+## Status: IDLE
 
-**Simplex noise, fbm, ridge and Poisson-disk sampling.** The topmost unblocked
-task in Phase 0's Ready list, and the second half of BL-005, whose noise
-criterion was split out on claim. Verified against `32_BACKLOG.md` rather than
-taken from the previous handoff's convenience line.
+No task in progress. **BL-054 is complete** — all three acceptance criteria are
+met. See `34_DEVELOPMENT_LOG.md` 2026-08-15 for the measurements and the
+determinism argument.
 
-### Acceptance criteria (from `32_BACKLOG.md`)
+## Next action for an agent
 
-1. Noise output matches golden fixtures
-2. Poisson-disk sampling per chunk uses `rngFor('scatter', chunkX, chunkZ)` and
-   produces the same set whatever order chunks are generated in
-   (`12` §"Runs in a Web Worker")
-3. Output range and mean are measured and documented, not assumed
+The topmost unblocked task in Phase 0's Ready list, per
+`docs/AI_DEVELOPMENT_WORKFLOW.md` §2. As of this session that is **BL-006**
+(typed event bus, S, depends on BL-001, which is done).
 
-### Files expected to change
+**Read the file, do not trust this line.** An earlier handoff named BL-015 as
+topmost when ten tasks sat above it. The list is the authority; this paragraph
+is a convenience. Note that **BL-056 was filed into Phase 1 this session**, so
+it is not a candidate while Phase 0 is current.
 
-- `packages/client/src/sim/noise/Noise.ts` (new) — simplex 2D/3D, fbm, ridge
-- `packages/client/src/sim/noise/PoissonDisk.ts` (new)
-- their `.test.ts` siblings
-- `docs/32_BACKLOG.md`, `docs/33_CURRENT_TASK.md`, `docs/34_DEVELOPMENT_LOG.md`
+## What BL-054 leaves for whoever needs noise
 
-### The determinism decision this task turns on
+1. `createNoiseField(worldSeed, purpose)` takes a **purpose string**, so terrain
+   and scatter clumping draw independent fields from one world seed. Use it —
+   a shared field makes clumping correlate with elevation for no reason.
+2. `fbm` is **normalised by total amplitude**, so `octaves` changes detail and
+   not relief. `TERRAIN_FBM` and `RIDGE_FBM` are `12` §"Terrain"'s exact
+   parameters, exported so the numbers live in one place.
+3. `ridgeNoise` returns `[0, 1]`, not `[-1, 1]`, mean measured at 0.433. It
+   contributes upward or not at all; that is why `12` can add a masked ridge
+   term without carving.
+4. `samplePoissonDisk`'s `accept` callback is `12` §"Scatter"'s clumping hook.
+   It is consulted **before** the distance test, so the draw sequence depends on
+   the candidate stream alone. A neutral hook returning 1 is asserted to produce
+   byte-identical output to no hook at all.
 
-`04` §3 pins "hand-rolled ... + simplex — determinism must be ours, not a
-library's", and BL-005's module header makes the bit-exactness argument
-precisely: every operation it uses is exactly specified by ECMA-262, and it
-names reaching for `Math.sin` as a mixer as the mistake that would break it.
+## Two things to be careful about
 
-**Simplex noise reintroduces exactly that hazard through `Math.sqrt`.** The
-skew constants are conventionally written `F2 = (sqrt(3) - 1)/2` and
-`G2 = (3 - sqrt(3))/6`, and ECMA-262 specifies `Math.sqrt` as
-*implementation-approximated* — the same latitude that makes `Math.sin`
-unusable here. So this module computes no square root at run time: the skew
-constants are committed as decimal literals, and Poisson-disk compares squared
-distances. `Math.floor`, `Math.imul`, `+`, `*` and comparison are all exact.
+**Do not add a square root, sine, cosine or power to `sim/noise/`.** ECMA-262
+specifies all four as implementation-approximated, and the whole determinism
+argument in `Rng.ts`'s header depends on avoiding them. A test asserts this via
+`Function.prototype.toString` and will fail — that is the intended behaviour,
+not an obstacle to route around. If a genuinely new constant is needed, compute
+it offline, commit it as a literal, and add a test that re-derives it.
+
+**The chunk seam is unresolved and is BL-056.** Minimum distance holds within a
+chunk and not across a boundary. Do not "fix" it inline while working on
+scatter — the naive fix breaks order-independence, which `12` treats as the
+harder constraint.
 
 ---
 

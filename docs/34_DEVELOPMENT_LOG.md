@@ -34,6 +34,106 @@ What was added, and what it protects.
 
 ---
 
+## 2026-08-15 — BL-054 Simplex noise, fbm, ridge and Poisson-disk sampling
+
+**What landed.** `packages/client/src/sim/noise/Noise.ts` and
+`packages/client/src/sim/noise/PoissonDisk.ts`, with their test siblings. 38
+new tests; suite **212 pass / 0 fail / 0 todo**, up from 174. `pnpm lint`,
+`pnpm typecheck` green.
+
+**The decision this task turned on: no square root at play time.** `04` §3
+requires determinism to be ours, and `Rng.ts`'s header earns that by arguing
+from ECMA-262 — `Math.imul`, `>>>`, `^` and `+` on int32 operands have no
+implementation latitude — and by naming `Math.sin` as the mixer that would
+forfeit it. Simplex reintroduces exactly that hazard through the back door:
+its skew constants are conventionally written `F2 = (√3 − 1)/2` and
+`G2 = (3 − √3)/6`, Bridson's candidate placement is conventionally
+`cos`/`sin` of a random angle, and the background grid's cell is conventionally
+`radius / √2`. **ECMA-262 specifies `Math.sqrt`, `Math.sin`, `Math.cos` and
+`Math.pow` as implementation-approximated.** In practice every engine ships a
+correctly-rounded `sqrt` because IEEE-754 demands one — but "every engine
+currently does" is a weaker claim than "the specification forbids otherwise",
+and a save that replays differently on a different browser is the exact failure
+this project cannot have.
+
+So: the constants are committed as decimal literals, checked by tests that
+re-derive them from `Math.sqrt` and require agreement within one ulp; candidates
+are drawn by rejection from the square annulus (the annulus is `3π/16 ≈ 59%` of
+the square, so ~1.7 draws each); every distance test compares squares; and the
+attenuation `(0.5 − |d|²)⁴` is repeated multiplication rather than `Math.pow`.
+A test asserts the claim directly, via `Function.prototype.toString` over the
+exported routines — which inspects the run-time code exactly, and needs no
+`node:fs` inside `sim/`, which the boundary rules forbid.
+
+**Measured range and mean** (criterion 3), over 20,000 lattice samples. These
+are the measurements, not the assertions — the tests bound them loosely on
+purpose, because a test pinned to the last digit fails on any harmless change.
+
+| field | min | max | mean |
+|---|---|---|---|
+| `simplex2` | −0.99626 | 0.99030 | −0.00086 |
+| `simplex3` | −0.96545 | 0.96750 | 0.00564 |
+| `fbm` (oct 5, lac 2, gain 0.5) | −0.75777 | 0.85539 | −0.00019 |
+| `ridgeNoise` (oct 3) | 0.02001 | 0.99579 | 0.43331 |
+
+Two things worth reading off that table. The conventional scale factors (70 in
+2D, 32 in 3D) really do land inside `[-1, 1]` and really do use most of it, so
+neither is a fudge. And **ridge noise is nowhere near centred** — mean 0.43 on
+`[0, 1]` — which is the point of it: `12` §"Terrain" adds a masked ridge term,
+so a ridge must contribute upward or not at all and must never carve.
+
+**`fbm` normalises by total amplitude, and that is not cosmetic.** Undivided, a
+5-octave `gain = 0.5` sum reaches ±1.9375. `12` §"Terrain" multiplies fbm by
+0.28 and adds it to a mask, so without the division `octaves` would be a *gain*
+knob wearing a detail knob's name, and changing it would silently change how
+much relief the island has. There is a test that one octave of fbm is exactly
+`simplex2`, which is what pins the divisor to the amplitude sum rather than to
+the octave count — at one octave those agree, so it is a real check.
+
+**Order-independence is a property of the keying, and the tests are aimed
+there.** `33_CURRENT_TASK.md`'s handoff was right that `Rng.test.ts` already
+proves the streams are independent and that what was left was proving the
+*sampler* does not undo it. There is exactly one way to undo it — let a chunk
+read something outside itself — so `samplePoissonDisk` takes the world seed and
+the chunk coordinates and reads nothing else. Tested by generating the same six
+chunks reversed, and interleaved with unrelated chunks, comparing **element for
+element rather than as a set**: a sampler that returned the right points in a
+seed-dependent order would pass a set comparison and still break the chunk hash
+`12` §"Verification" step 8 calls for. The negative control matters as much —
+different chunks must *differ*, which catches a sampler that ignored its
+coordinates and would otherwise pass every order test while tiling the island
+with one repeated pattern.
+
+**Surprises.**
+
+1. **`tools/check-sim-purity.ts` does not exist.** `CLAUDE.md`, `06`
+   §"Purity of `sim/`" and `Rng.ts`'s own header all describe it in the present
+   tense as the thing enforcing `sim/` purity. It is **BL-017**, still open in
+   the Ready list. Enforcement today is the ESLint bans alone, which do cover
+   the banned globals — so nothing is wrong, but three documents assert a gate
+   that is not there, and a session could reasonably rely on it. Not fixed here
+   (it is another task, and taking it would be scope creep); recorded so the
+   next reader does not have to rediscover it.
+2. **`noUncheckedIndexedAccess` applies to typed arrays**, exactly as the BL-005
+   handoff warned. The `at()` accessor pattern it recommended was needed on
+   nearly every line of the permutation indexing, and the warning saved real
+   time — the handoff was right and specific, which is worth saying because
+   handoffs usually are not.
+3. **The BL-005 handoff's "next action" line was correct this time**, unlike the
+   one before it that it warns about. BL-054 was genuinely topmost. Verified
+   against `32_BACKLOG.md` anyway, per the file's own advice.
+
+**Deliberately not done.** The sampler does not enforce the minimum distance
+*across* a chunk boundary; a point near an edge can land within `radius` of one
+in the neighbour. That is the price of order-independence, which `12` states as
+the harder requirement, and the alternative (sample the 8 neighbours from their
+own streams and keep only the centre) costs 9× for an artefact nobody has
+looked at yet. Filed as **BL-056** with the technique written down, rather than
+guessed at now.
+
+**Next.** The topmost unblocked task in Phase 0's Ready list is now **BL-006**
+(typed event bus, S, depends on BL-001). Read the list rather than this line.
+
 ## 2026-08-11 — BL-005 Seeded RNG (mulberry32 + named streams)
 
 **Type:** feature
