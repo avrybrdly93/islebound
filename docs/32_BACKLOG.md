@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-057**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-058**.
 
 **Task format:**
 
@@ -39,10 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-### BL-006 — Typed event bus
-- **Phase:** 0 · **Size:** S · **Depends on:** BL-001 · **Docs:** 04
-- Claimed 2026-08-16. Topmost unblocked **Phase 0** task; `BL-056` is listed
-  above it in Ready but is Phase 1.
+*(nothing — pick the topmost unblocked task from Ready)*
 
 ---
 
@@ -56,14 +53,6 @@ Current phase: **Phase 0 — Foundation**
   - [ ] If it needs fixing, the fix preserves order-independence (the standard technique is to sample a chunk's own points *and* its 8 neighbours' from their own streams, keeping only the centre chunk's — deterministic, at 9x the sampling cost)
   - [ ] Whatever is decided is recorded in `40_DECISION_LOG.md`
 - **Notes:** Filed 2026-08-15 by BL-054 rather than fixed inline: it is a judgement about how the island looks, it needs the renderer to answer, and guessing now would either cost 9x for nothing or bake in an artefact. `12` §"Scatter" already softens the visual consequence with clumping, so it may well be invisible.
-
-### BL-006 — Typed event bus
-- **Phase:** 0 · **Size:** S · **Depends on:** BL-001 · **Docs:** 04
-- **Description:** A typed pub/sub with a discriminated-union event type, subscribe/unsubscribe, and a queued mode that drains at a defined point in the tick (so handlers cannot reorder simulation).
-- **Acceptance criteria:**
-  - [ ] Type-safe: subscribing to `'item:added'` narrows the payload
-  - [ ] No allocation per emit for zero-subscriber events
-  - [ ] Unsubscribe during emit does not skip handlers
 
 ### BL-007 — ECS-lite: entities, component stores, queries
 - **Phase:** 0 · **Size:** L · **Depends on:** BL-004, BL-006 · **Docs:** 04, 07
@@ -270,6 +259,15 @@ Current phase: **Phase 0 — Foundation**
 
 ---
 
+### BL-057 — The allocation allowance can fall below one profiler sample
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-050 · **Docs to read:** 29
+- **Description:** `allocationAllowanceFromControl` returns `control / 100`, and `measureAttributedAllocation` samples every 1024 bytes by default. On this machine the control reads **77k–94k** across runs, so the allowance lands at **773–944 bytes — below one sampling interval**. A single stray sample attributed to the measured frames is 1024 bytes and fails an assertion whose true reading is exactly 0.
+- **Acceptance criteria:**
+  - [ ] The zero-allocation assertions cannot be failed by one stray sample, without raising the threshold above one object's worth of allocation
+  - [ ] Whatever is chosen is derived from the sampling interval rather than tuned, and the reasoning is in `allocationHarness.ts`
+  - [ ] `core/math/allocation.test.ts` gets the same treatment as `core/EventBus.test.ts`
+- **Notes:** Filed 2026-08-16 by BL-006, from a real failure: `EventBus.test.ts`'s first run failed its zero-subscriber-emit assertion once, then passed 13 consecutive runs, which is what prompted measuring the control. **Not hypothetical for the existing suite either** — `allocation.test.ts` derives its allowance the same way and BL-050 recorded a reference-machine control of ~115000 (allowance 1150, only just above one sample). BL-006 mitigated its own three cases with `repeats: 6`, since `attributedBytes` is the minimum across passes and a stray must then recur in all six; that is a local patch, not the fix. The guard `controlBytes >= 10_000` does not catch this, because the instrument is working correctly — it is the *allowance arithmetic* that is unaware of the sample granularity.
+
 ## Ready — Phase 1: Player & World (seeded; groom before starting)
 
 ### BL-022 — Control map authoring and loader
@@ -377,6 +375,10 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-006 — Typed event bus
+- **Completed:** 2026-08-16 · **PR:** — (pushed direct to `main`)
+- `core/EventBus.ts`: generic over an event map, `on`/`once` returning their own `Unsubscribe`, `emit` for immediate dispatch, `enqueue`/`drain` for the queued mode `04` §4.4 wants, plus `handlerCount`/`queuedCount`/`clear`. 28 tests; suite **240 pass / 0 fail / 0 todo**, was 212. All three criteria met. **Type safety is checked at compile time in both directions** — narrowing assignments for the positive half, `@ts-expect-error` for the negative, so a loosened generic turns the directives themselves into errors; measured by loosening the payloads to `unknown`, which produces **17 typecheck errors**. **Zero-subscriber emit measured at exactly 0 attributed bytes** against a control in the same process, via BL-050's profiler. **Unsubscribe during emit tombstones rather than splices**, with compaction deferred until the outermost dispatch returns. Discovered work: BL-057. **Surprise, and the one worth reading:** the first two criterion-3 tests written *passed against a deliberately spliced implementation*. Splicing a *later* handler happens to behave, because the survivor slides into an index the loop has not reached; only cancelling an *already-called* handler (or the running one) slides the rest down past the cursor and drops the last. Two cases were added for exactly that, and they are the two that fail under the perturbation. **Second surprise:** `EventMap` cannot be `Record<string, unknown>` — TypeScript gives implicit index signatures to type aliases but not to interfaces, so the natural `interface GameEvents { ... }` is rejected; the constraint is `object` and the payload types still come from `M[K]`.
 
 ### BL-054 — Simplex noise, fbm, ridge and Poisson-disk sampling
 - **Completed:** 2026-08-15 · **PR:** — (pushed direct to `main`)
