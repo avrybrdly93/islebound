@@ -39,7 +39,10 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-*(nothing — pick the topmost unblocked task from Ready)*
+### BL-006 — Typed event bus
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-001 · **Docs:** 04
+- Claimed 2026-08-16. Topmost unblocked **Phase 0** task; `BL-056` is listed
+  above it in Ready but is Phase 1.
 
 ---
 
