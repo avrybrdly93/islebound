@@ -4,38 +4,63 @@
 
 ---
 
-## Status: IN_PROGRESS
+## Status: IDLE
 
-## Current task
-**BL-006** — Typed event bus
-- **Phase:** 0
-- **Started:** 2026-08-16
-- **Branch:** main (this repo commits to main; see the last three log entries)
-- **Docs read:** AI_DEVELOPMENT_WORKFLOW, 32, 33, 34 (last 3), 35, 04, 05, 06, 07
-- **Estimated size:** S
+No task in progress. **BL-006 is complete** — all three acceptance criteria are
+met. See `34_DEVELOPMENT_LOG.md` 2026-08-16 for the measurements, the two
+surprises and the perturbation table.
 
-Topmost unblocked Phase 0 task. `BL-056` sits above it in the Ready list but is
-**Phase 1**, so it is not a candidate while Phase 0 is current — the previous
-handoff flagged exactly this, and the list was re-read rather than trusted.
+## Next action for an agent
 
-### Plan
-1. `core/EventBus.ts` per `05`'s tree — generic over an event map so payload
-   types are per-event, `on` returning its own unsubscribe, `emit` for immediate
-   dispatch, `enqueue`/`drain` for the queued mode.
-2. Make the zero-subscriber `emit` path allocation-free: a `Map` miss and an
-   early return, no iterator, no array, no closure.
-3. Make unsubscribe-during-emit safe by **tombstoning rather than splicing**, so
-   live indices never shift under the dispatch loop; compact when the outermost
-   dispatch finishes.
-4. Tests on `node:test`, including the zero-allocation criterion measured with
-   BL-050's `measureAttributedAllocation` against a control in the same process.
-5. Update `32`/`33`/`34`.
+The topmost unblocked task in Phase 0's Ready list, per
+`docs/AI_DEVELOPMENT_WORKFLOW.md` §2. As of this session that is **BL-007**
+(ECS-lite, L, depends on BL-004 and BL-006, both now done).
 
-### Decisions made during implementation
-- Recorded below as they are taken.
+**Read the file, do not trust this line.** Two entries sit above BL-007 in the
+Ready list and neither is a Phase 0 candidate: `BL-056` is Phase 1, and
+`BL-057` was filed this session at the *end* of the Phase 0 list, not the top.
+The list is the authority; this paragraph is a convenience.
 
-### Blockers
-- None.
+Note BL-007 is size **L** and the first task in this project that is not
+comfortably one session. Consider splitting it in `32` before starting —
+`AI_DEVELOPMENT_WORKFLOW.md` §3 explicitly permits that, and its four
+acceptance criteria (query performance, generation-bit aliasing, ascending
+iteration order, `structuredClone` round-trip) split along obvious seams.
+
+## What BL-006 leaves for whoever needs events
+
+1. **`EventBus` is generic over an event map, and the map may be an
+   `interface`.** It cannot be constrained to `Record<string, unknown>` —
+   TypeScript gives implicit index signatures to type aliases only. If you find
+   yourself writing `type GameEvents = {...}` to satisfy a constraint, the
+   constraint is already `object` and you do not need to.
+2. **There is no `SimEvent` union yet, and no `sim/events/` directory.** `05`
+   describes one; BL-006 deliberately did not create it, because nothing emits
+   a sim event until BL-007/BL-008 exist. Derive it from the map when the sim
+   needs one to serialise.
+3. **Use `enqueue`/`drain`, not `emit`, for anything the simulation produces.**
+   `emit` runs handlers synchronously inside whatever is emitting, which lets a
+   subscriber observe half-updated state and makes tick ordering depend on who
+   subscribed. `drain()` is called once per tick by the loop's owner — BL-008
+   is what will decide where.
+4. **A drain is a bounded batch.** Events enqueued during a drain wait for the
+   next one, on purpose. Do not "fix" that into a loop-until-empty: a handler
+   that re-enqueues its own event would not terminate.
+
+## Two things to be careful about
+
+**Do not replace the tombstone in `on`'s unsubscribe with a `splice`.** It
+looks equivalent and is not, and the difference is invisible to the obvious
+test. Splicing a *later* handler behaves correctly; splicing an
+*already-called* one slides every later handler down past the dispatch
+cursor and silently drops the last. Two tests exist for precisely this and
+they are the only two that catch it — measured, see the log entry.
+
+**The zero-allocation assertions carry a `repeats: 6` that is load-bearing,
+and BL-057 explains why.** The allowance derived from the control can land
+below the profiler's own sampling interval, which makes one stray sample a
+failure. Do not remove the `repeats` without reading that item; the symptom is
+a test that fails roughly once in fourteen runs and passes on retry.
 
 ---
 

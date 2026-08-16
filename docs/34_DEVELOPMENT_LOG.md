@@ -34,6 +34,101 @@ What was added, and what it protects.
 
 ---
 
+## 2026-08-16 — BL-006 Typed event bus
+
+**Type:** feature
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+
+### What changed
+`packages/client/src/core/EventBus.ts` and its test sibling. A pub/sub generic
+over an event map, with an immediate mode (`emit`) and the queued mode `04`
+§4.4 asks for (`enqueue` + `drain`), plus `once`, `handlerCount`,
+`queuedCount` and `clear`. 28 new tests; suite **240 pass / 0 fail / 0 todo**,
+up from 212. `pnpm lint`, `lint:rules`, `typecheck`, `format:check`, `build`
+and `test:node` all green, and the suite was run five more times to check the
+allocation cases are stable.
+
+### Why it was done this way
+
+**Zero-subscriber emit is a failed `Map` lookup and nothing else.** A type
+with no handlers is *absent* from the map rather than present with an empty
+array, and the array is deleted again when its last handler unsubscribes — so
+the fast path survives a subscribe/unsubscribe cycle rather than degrading to
+a hit on a permanently empty list. No iterator (`for...of` over a `Map`
+allocates a result object per step), no closure, and the payload is passed
+straight through rather than wrapped in an envelope.
+
+**Unsubscribe tombstones the slot; it does not splice it.** Compaction is
+deferred until the outermost dispatch returns, so a re-entrant emit cannot
+shift indices under a loop that is still walking them.
+
+**A drain is a bounded batch.** Events enqueued *by a handler during* a drain
+wait for the next one. The alternative does not terminate for a handler that
+re-enqueues its own event, and it would make the number of events a tick
+processes depend on handler behaviour — the opposite of the property `04`
+§4.4 wants from the choke point.
+
+**Type safety is asserted at compile time in both directions.** Narrowing
+assignments cover the positive half; `@ts-expect-error` covers the negative,
+so a wrong payload, a wrong handler signature or an unknown event name each
+fail the build *if they ever start compiling*. Loosening the payloads to
+`unknown` was measured: 17 typecheck errors, including two "Unused
+'@ts-expect-error' directive".
+
+### Surprises
+
+**1. The first two tests written for criterion 3 passed against a deliberately
+spliced implementation.** This is the entry's most useful line. "Unsubscribe
+during emit does not skip handlers" reads like one behaviour and is two:
+cancelling a *later* handler by splicing happens to behave correctly, because
+the survivor slides down into an index the dispatch loop has not reached yet.
+Only cancelling an *already-called* handler — or the running one — slides
+every later handler down past the cursor, and the last one is silently never
+called. The obvious test (a handler cancelling the next one) is the case that
+cannot detect the bug. Two cases were added for the real failure mode, and
+they are exactly the two that go red under the perturbation, with the other 26
+still green.
+
+**2. `EventMap` cannot be `Record<string, unknown>`.** TypeScript grants
+implicit index signatures to type *aliases* but not to *interfaces*, so
+`interface GameEvents { 'item:added': ... }` — which is how `05` §`sim/events/`
+describes it and how anyone would naturally write it — fails that constraint
+with "Index signature for type 'string' is missing". The constraint is
+`object`; every payload type still resolves through `M[K]`, so nothing is
+given up. There is a test pinning that an interface is accepted.
+
+**3. The allocation harness has a threshold that can sit below its own
+resolution, and it bit once.** This file's zero-subscriber-emit assertion
+failed on its very first run and then passed 13 consecutive runs.
+`allocationAllowanceFromControl` returns `control / 100`, and the control on
+this machine reads **77k–94k**, putting the allowance at **773–944 bytes —
+under the profiler's 1024-byte sampling interval**. One stray sample landing
+in the measured frames is therefore an automatic failure of an assertion whose
+true reading is 0. Mitigated here with `repeats: 6` (`attributedBytes` is the
+minimum across passes, so a stray must recur in all six) and filed as BL-057,
+because `core/math/allocation.test.ts` derives its allowance the same way —
+BL-050 recorded a reference control of ~115000, an allowance of 1150, only
+just above one sample.
+
+### Tests
+28 cases across four groups: type safety (compile-time, both directions),
+subscribe/emit/unsubscribe semantics, the criterion-3 cases above, the queued
+mode including the bounded-batch and re-entrancy rules, and three
+allocation measurements — zero subscribers, zero subscribers after a
+subscribe/unsubscribe cycle (a different `Map` state, so measured rather than
+assumed), and one subscriber with a non-allocating handler.
+
+Three perturbations applied and reverted: payloads loosened to `unknown` (17
+typecheck errors), `splice` in place of the tombstone (2 failures, both the
+cases written for it), and the same splice *before* those two cases existed
+(0 failures — recorded because it is the reason they exist).
+
+### Follow-ups
+- **BL-057** — the allocation allowance can fall below one profiler sample.
+
+---
+
 ## 2026-08-15 — BL-054 Simplex noise, fbm, ridge and Poisson-disk sampling
 
 **What landed.** `packages/client/src/sim/noise/Noise.ts` and
