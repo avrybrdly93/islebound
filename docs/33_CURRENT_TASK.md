@@ -4,28 +4,54 @@
 
 ---
 
-## Status: IDLE
+## Status: IN_PROGRESS — BL-007
 
-No task in progress. **BL-006 is complete** — all three acceptance criteria are
-met. See `34_DEVELOPMENT_LOG.md` 2026-08-16 for the measurements, the two
-surprises and the perturbation table.
+**BL-007 — ECS-lite part 1: the entity allocator.** Size M after the split
+described below. `docs/32_BACKLOG.md` → Ready → Phase 0, topmost unblocked
+entry (BL-056 above it is Phase 1, so it is not a candidate under
+`AI_DEVELOPMENT_WORKFLOW.md`'s phase discipline).
 
-## Next action for an agent
+### The split, done before any code
 
-The topmost unblocked task in Phase 0's Ready list, per
-`docs/AI_DEVELOPMENT_WORKFLOW.md` §2. As of this session that is **BL-007**
-(ECS-lite, L, depends on BL-004 and BL-006, both now done).
+BL-007 was size **L** and the previous session's handoff said so: "the first
+task in this project that is not comfortably one session. Consider splitting it
+in `32` before starting". `AI_DEVELOPMENT_WORKFLOW.md` §3 permits that
+explicitly, and the seam was not invented here — `05_CODEBASE_STRUCTURE.md` §1
+already lists `sim/ecs/` as **"EntityAllocator, ComponentStore, Query"**, three
+files. So:
 
-**Read the file, do not trust this line.** Two entries sit above BL-007 in the
-Ready list and neither is a Phase 0 candidate: `BL-056` is Phase 1, and
-`BL-057` was filed this session at the *end* of the Phase 0 list, not the top.
-The list is the authority; this paragraph is a convenience.
+| slice | id | carries |
+|---|---|---|
+| entity allocator | **BL-007** (this) | generation-bit aliasing, ascending order of live entities |
+| component stores | BL-058 | `structuredClone` round-trip, ascending `entities()` |
+| cached queries | BL-059 | the 10,000 x 6 ≤ 0.15 ms criterion, ascending query results |
 
-Note BL-007 is size **L** and the first task in this project that is not
-comfortably one session. Consider splitting it in `32` before starting —
-`AI_DEVELOPMENT_WORKFLOW.md` §3 explicitly permits that, and its four
-acceptance criteria (query performance, generation-bit aliasing, ascending
-iteration order, `structuredClone` round-trip) split along obvious seams.
+**None of the original four acceptance criteria was dropped**; each landed on
+the slice whose code it is actually about. The performance one goes to BL-059
+because queries are the thing it measures. BL-008 and BL-014 both named
+`BL-007` as a dependency back when that id meant all three slices, so both were
+repointed to **BL-059**, the slice that finishes what they were waiting for.
+
+### Plan (written before the first line of code)
+
+1. `sim/ecs/EntityAllocator.ts` — a packed 32-bit handle, index in the low
+   bits, generation in the high bits. `create()`, `destroy()`, `isLive()`,
+   `liveEntities()`.
+2. Free-list recycling: a destroyed index returns to a free list and its
+   generation increments, so an old handle to that index stops validating.
+3. Loud failure at both ceilings — index space exhausted, generation space
+   exhausted — rather than silent wraparound, which is aliasing by another
+   name.
+4. Tests: the 1M create/destroy aliasing sweep, ascending-order iteration,
+   `structuredClone` of a handle, and both exhaustion paths.
+5. Verify with the `AI_DEVELOPMENT_WORKFLOW.md` §6 commands that exist today,
+   and say plainly which do not.
+
+### Files expected to change
+
+- `packages/client/src/sim/ecs/EntityAllocator.ts` (new)
+- `packages/client/src/sim/ecs/EntityAllocator.test.ts` (new)
+- `docs/32_BACKLOG.md`, `docs/33_CURRENT_TASK.md`, `docs/34_DEVELOPMENT_LOG.md`
 
 ## What BL-006 leaves for whoever needs events
 

@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-058**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-060**.
 
 **Task format:**
 
@@ -39,7 +39,8 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-*(nothing — pick the topmost unblocked task from Ready)*
+### BL-007 — ECS-lite part 1: the entity allocator
+Claimed 2026-08-18. See `33_CURRENT_TASK.md`. (Full entry stays in Ready below until it moves to Done, so the split's three slices read together.)
 
 ---
 
@@ -54,17 +55,36 @@ Current phase: **Phase 0 — Foundation**
   - [ ] Whatever is decided is recorded in `40_DECISION_LOG.md`
 - **Notes:** Filed 2026-08-15 by BL-054 rather than fixed inline: it is a judgement about how the island looks, it needs the renderer to answer, and guessing now would either cost 9x for nothing or bake in an artefact. `12` §"Scatter" already softens the visual consequence with clumping, so it may well be invisible.
 
-### BL-007 — ECS-lite: entities, component stores, queries
-- **Phase:** 0 · **Size:** L · **Depends on:** BL-004, BL-006 · **Docs:** 04, 07
-- **Description:** Entity allocator with generation bits, sparse-set component stores, cached queries by component signature, deterministic ascending iteration order, entity destruction with deferred cleanup.
+### BL-007 — ECS-lite part 1: the entity allocator
+- **Phase:** 0 · **Size:** M · **Depends on:** BL-004, BL-006 · **Docs:** 04, 07
+- **Description:** `sim/ecs/EntityAllocator.ts`: dense entity ids recycled with generation bits, `create`/`destroy`/`isLive`, and ascending iteration of live entities. The handle is a single `number` so it is `structuredClone`-safe and hashable, per `04` §4.3's `type EntityId = number`.
+- **Acceptance criteria:**
+  - [ ] Recycled entity IDs never alias (generation test over 1M create/destroy cycles)
+  - [ ] Live-entity iteration is in ascending **index** order, always
+  - [ ] A handle survives `structuredClone` and `worldHash`-style numeric hashing unchanged
+  - [ ] Exhausting the index or generation space fails loudly rather than aliasing silently
+- **Notes:** Split out of the original size-**L** BL-007 on 2026-08-18, along the seam `05` §1 already names — `sim/ecs/` is listed there as "EntityAllocator, ComponentStore, Query", three files. The previous session's handoff in `33` recommended the split and `AI_DEVELOPMENT_WORKFLOW.md` §3 permits it. The other two slices are BL-058 and BL-059 below; the original four acceptance criteria are distributed across the three with none dropped.
+
+### BL-058 — ECS-lite part 2: sparse-set component stores
+- **Phase:** 0 · **Size:** M · **Depends on:** BL-007 · **Docs:** 04, 07
+- **Description:** `sim/ecs/ComponentStore.ts`: the `Store<T>` interface from `04` §4.3 (`has`/`get`/`set`/`remove`/`entities`) backed by a sparse set, plus `ComponentDef<T>` and the `World.store(def)` accessor. Components stay plain serialisable data — no methods, no class instances, no object references, only `EntityId`s.
+- **Acceptance criteria:**
+  - [ ] `structuredClone` of any component round-trips losslessly
+  - [ ] `entities()` yields in ascending entity order, always
+  - [ ] A store rejects (or ignores, documented either way) a destroyed entity's handle rather than resurrecting it
+- **Notes:** Split out of BL-007 on 2026-08-18. Depends on the allocator for the generation check that makes a stale handle detectable.
+
+### BL-059 — ECS-lite part 3: cached queries by component signature
+- **Phase:** 0 · **Size:** M · **Depends on:** BL-058 · **Docs:** 04, 07
+- **Description:** `sim/ecs/Query.ts`: `World.query(...defs)` returning entities sorted ascending, computed lazily and cached per-tick by component-set signature (`04` §4.3), with cache invalidation on store mutation.
 - **Acceptance criteria:**
   - [ ] 10,000 entities × 6 components: query iteration ≤ 0.15 ms
-  - [ ] Recycled entity IDs never alias (generation test over 1M create/destroy cycles)
   - [ ] Query results are in ascending entity order, always
-  - [ ] `structuredClone` of any component round-trips losslessly
+  - [ ] A component added or removed mid-tick is reflected, not served from a stale cache
+- **Notes:** Split out of BL-007 on 2026-08-18. This slice carries the performance criterion, because it is the only one of the three whose cost the criterion is actually about. **BL-008 and BL-014 named `BL-007` as a dependency when BL-007 meant all three slices; both now name BL-059**, which is the slice that completes what they were waiting for.
 
 ### BL-008 — Fixed-timestep game loop
-- **Phase:** 0 · **Size:** M · **Depends on:** BL-007 · **Docs:** 04, 09
+- **Phase:** 0 · **Size:** M · **Depends on:** BL-059 · **Docs:** 04, 09
 - **Description:** The accumulator loop from `04` §4.1 with a 5-step catch-up cap, tab-switch clamping, interpolation alpha, and per-stage timing instrumentation.
 - **Acceptance criteria:**
   - [ ] Simulation runs at exactly 30 Hz regardless of render rate (verified at simulated 30/60/144 fps)
@@ -110,7 +130,7 @@ Current phase: **Phase 0 — Foundation**
   - [ ] Per-system timings are accurate within 5% of a manual measurement
 
 ### BL-014 — Headless simulation harness (`pnpm sim`)
-- **Phase:** 0 · **Size:** L · **Depends on:** BL-007, BL-008, BL-005 · **Docs:** 29
+- **Phase:** 0 · **Size:** L · **Depends on:** BL-059, BL-008, BL-005 · **Docs:** 29
 - **Description:** A Node entry point that constructs a world without any renderer, runs N ticks, supports `--seed`, `--ticks`, `--assert-hash`, `--profile` and `--script`, and implements `worldHash()`.
 - **Acceptance criteria:**
   - [ ] `pnpm sim --ticks 20000` runs in under 3 seconds
