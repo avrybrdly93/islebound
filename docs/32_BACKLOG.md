@@ -39,8 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-### BL-007 — ECS-lite part 1: the entity allocator
-Claimed 2026-08-18. See `33_CURRENT_TASK.md`. (Full entry stays in Ready below until it moves to Done, so the split's three slices read together.)
+*(nothing — pick the topmost unblocked task from Ready)*
 
 ---
 
@@ -54,16 +53,6 @@ Claimed 2026-08-18. See `33_CURRENT_TASK.md`. (Full entry stays in Ready below u
   - [ ] If it needs fixing, the fix preserves order-independence (the standard technique is to sample a chunk's own points *and* its 8 neighbours' from their own streams, keeping only the centre chunk's — deterministic, at 9x the sampling cost)
   - [ ] Whatever is decided is recorded in `40_DECISION_LOG.md`
 - **Notes:** Filed 2026-08-15 by BL-054 rather than fixed inline: it is a judgement about how the island looks, it needs the renderer to answer, and guessing now would either cost 9x for nothing or bake in an artefact. `12` §"Scatter" already softens the visual consequence with clumping, so it may well be invisible.
-
-### BL-007 — ECS-lite part 1: the entity allocator
-- **Phase:** 0 · **Size:** M · **Depends on:** BL-004, BL-006 · **Docs:** 04, 07
-- **Description:** `sim/ecs/EntityAllocator.ts`: dense entity ids recycled with generation bits, `create`/`destroy`/`isLive`, and ascending iteration of live entities. The handle is a single `number` so it is `structuredClone`-safe and hashable, per `04` §4.3's `type EntityId = number`.
-- **Acceptance criteria:**
-  - [ ] Recycled entity IDs never alias (generation test over 1M create/destroy cycles)
-  - [ ] Live-entity iteration is in ascending **index** order, always
-  - [ ] A handle survives `structuredClone` and `worldHash`-style numeric hashing unchanged
-  - [ ] Exhausting the index or generation space fails loudly rather than aliasing silently
-- **Notes:** Split out of the original size-**L** BL-007 on 2026-08-18, along the seam `05` §1 already names — `sim/ecs/` is listed there as "EntityAllocator, ComponentStore, Query", three files. The previous session's handoff in `33` recommended the split and `AI_DEVELOPMENT_WORKFLOW.md` §3 permits it. The other two slices are BL-058 and BL-059 below; the original four acceptance criteria are distributed across the three with none dropped.
 
 ### BL-058 — ECS-lite part 2: sparse-set component stores
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-007 · **Docs:** 04, 07
@@ -395,6 +384,10 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-007 — ECS-lite part 1: the entity allocator
+- **Completed:** 2026-08-18 · **PR:** — (pushed direct to `main`)
+- `sim/ecs/EntityAllocator.ts`: `create`/`destroy`/`isLive`/`liveEntities`, plus `indexOf`/`generationOf`/`NULL_ENTITY` and the `liveCount`/`retiredCount`/`capacity` counters. 13 tests; suite **253 pass / 0 fail / 0 todo**, was 240. All four acceptance criteria met. **The handle is one unsigned 32-bit number** — 20 index bits (1,048,576 live) against 12 generation bits (4,095 reuses per index) — so it clones and hashes as a primitive, per `04` §4.3's `type EntityId = number`. **Generations start at 1**, which is what makes handle `0` unreachable and `NULL_ENTITY` representable; the alternative makes index 0's first entity the number `0` and every `if (entity)` in the codebase quietly mean "every entity except the first". **A spent index is retired, not wrapped** — wrapping generation 4095 back to 1 re-issues a handle that was already live, which is the aliasing the generation bits exist to prevent. Only index-space exhaustion throws. The 1M-cycle criterion is checked against **every** handle issued so far, not the predecessor, because a wrapping counter passes the pairwise version 4,094 times in 4,095. Five perturbations all caught (wrap-instead-of-retire, drop the `>>> 0`, generations from 0, `isLive` ignoring the generation, descending iteration). **Split note:** this is one of three slices of the original size-L BL-007 — see BL-058 and BL-059, and the 2026-08-18 log entry. **Surprise:** `06`'s ban on non-null assertions collides with `noUncheckedIndexedAccess` on every parallel-array read; resolved with one guarded accessor rather than 5 `?? 0` fallbacks, since generation `0` already means "no such entity" here.
 
 ### BL-006 — Typed event bus
 - **Completed:** 2026-08-16 · **PR:** — (pushed direct to `main`)

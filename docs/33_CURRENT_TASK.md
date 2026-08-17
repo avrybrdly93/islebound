@@ -4,56 +4,51 @@
 
 ---
 
-## Status: IN_PROGRESS — BL-007
+## Status: IDLE
 
-**BL-007 — ECS-lite part 1: the entity allocator.** Size M after the split
-described below. `docs/32_BACKLOG.md` → Ready → Phase 0, topmost unblocked
-entry (BL-056 above it is Phase 1, so it is not a candidate under
-`AI_DEVELOPMENT_WORKFLOW.md`'s phase discipline).
+No task in progress. **BL-007 is complete** — all four acceptance criteria are
+met. See `34_DEVELOPMENT_LOG.md` 2026-08-18 for the measurements, the
+perturbation table and the two surprises.
 
-### The split, done before any code
+## Next action for an agent
 
-BL-007 was size **L** and the previous session's handoff said so: "the first
-task in this project that is not comfortably one session. Consider splitting it
-in `32` before starting". `AI_DEVELOPMENT_WORKFLOW.md` §3 permits that
-explicitly, and the seam was not invented here — `05_CODEBASE_STRUCTURE.md` §1
-already lists `sim/ecs/` as **"EntityAllocator, ComponentStore, Query"**, three
-files. So:
+The topmost unblocked task in Phase 0's Ready list, per
+`AI_DEVELOPMENT_WORKFLOW.md` §2. As of this session that is **BL-058**
+(ECS-lite part 2, sparse-set component stores, M, depends on BL-007 which is
+now done).
 
-| slice | id | carries |
-|---|---|---|
-| entity allocator | **BL-007** (this) | generation-bit aliasing, ascending order of live entities |
-| component stores | BL-058 | `structuredClone` round-trip, ascending `entities()` |
-| cached queries | BL-059 | the 10,000 x 6 ≤ 0.15 ms criterion, ascending query results |
+**Read the file, do not trust this line.** `BL-056` still sits above it in
+Ready and is still Phase 1, so it is still not a candidate under the workflow's
+phase discipline — same as last session.
 
-**None of the original four acceptance criteria was dropped**; each landed on
-the slice whose code it is actually about. The performance one goes to BL-059
-because queries are the thing it measures. BL-008 and BL-014 both named
-`BL-007` as a dependency back when that id meant all three slices, so both were
-repointed to **BL-059**, the slice that finishes what they were waiting for.
+## What BL-007 leaves for BL-058 and BL-059
 
-### Plan (written before the first line of code)
-
-1. `sim/ecs/EntityAllocator.ts` — a packed 32-bit handle, index in the low
-   bits, generation in the high bits. `create()`, `destroy()`, `isLive()`,
-   `liveEntities()`.
-2. Free-list recycling: a destroyed index returns to a free list and its
-   generation increments, so an old handle to that index stops validating.
-3. Loud failure at both ceilings — index space exhausted, generation space
-   exhausted — rather than silent wraparound, which is aliasing by another
-   name.
-4. Tests: the 1M create/destroy aliasing sweep, ascending-order iteration,
-   `structuredClone` of a handle, and both exhaustion paths.
-5. Verify with the `AI_DEVELOPMENT_WORKFLOW.md` §6 commands that exist today,
-   and say plainly which do not.
-
-### Files expected to change
-
-- `packages/client/src/sim/ecs/EntityAllocator.ts` (new)
-- `packages/client/src/sim/ecs/EntityAllocator.test.ts` (new)
-- `docs/32_BACKLOG.md`, `docs/33_CURRENT_TASK.md`, `docs/34_DEVELOPMENT_LOG.md`
+1. **The handle is one unsigned 32-bit number**: `indexOf(e)` gives the low 20
+   bits, `generationOf(e)` the high 12. A component store should key on
+   **`indexOf(e)`**, not on the handle — the index is the dense, array-shaped
+   half, and the generation is what makes a stale handle detectable.
+2. **`isLive(e)` is the staleness check**, and BL-058's third criterion ("a
+   store rejects a destroyed entity's handle rather than resurrecting it") is
+   exactly a call to it. Keep the allocator as the single owner of that
+   judgement; a store that re-derives it will drift.
+3. **Ascending iteration is by index, and `liveEntities()` is O(capacity)**, a
+   scan of the index range. That is deliberate and it is *not* where the
+   performance criterion lives — BL-059's cached queries carry the 10,000 x 6
+   ≤ 0.15 ms budget, and a query must not be built by filtering
+   `liveEntities()` per call if that budget is to be met.
+4. **`retiredCount` climbs under heavy churn and that is normal**, not a leak:
+   an index whose 4,095 generations are spent is withdrawn rather than wrapped.
+   Only `create()` throws, and only when the index space itself is gone.
+5. **`NULL_ENTITY` is `0` and is never live.** Safe as an "absent" value in a
+   component field, which is why generations start at 1.
+6. **There is still no `World` class.** `04` §4.3 sketches one holding `tick`,
+   the stores, `query`, `events` and `step`. BL-058 and BL-059 build the two
+   remaining pieces; whoever assembles `World` from them should check whether
+   that assembly deserves its own backlog item rather than being absorbed.
 
 ## What BL-006 leaves for whoever needs events
+
+
 
 1. **`EventBus` is generic over an event map, and the map may be an
    `interface`.** It cannot be constrained to `Record<string, unknown>` —

@@ -34,6 +34,137 @@ What was added, and what it protects.
 
 ---
 
+## 2026-08-18 — BL-007 ECS-lite part 1: the entity allocator
+
+**Type:** feat
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~2h
+
+### The split, and why it happened before any code
+
+BL-007 was size **L**, and the previous session's handoff said as much: "the
+first task in this project that is not comfortably one session. Consider
+splitting it in `32` before starting." `AI_DEVELOPMENT_WORKFLOW.md` §3 and `35`
+§3 both permit exactly that.
+
+The seam was not invented for the occasion. `05_CODEBASE_STRUCTURE.md` §1
+already lists `sim/ecs/` as **"EntityAllocator, ComponentStore, Query"** —
+three files — and BL-007's four acceptance criteria fall onto them cleanly:
+
+| slice | id | carries |
+|---|---|---|
+| entity allocator | **BL-007** | generation-bit aliasing; ascending order of live entities |
+| component stores | BL-058 | `structuredClone` round-trip; ascending `entities()` |
+| cached queries | BL-059 | the 10,000 x 6 ≤ 0.15 ms budget; ascending query results |
+
+**No criterion was dropped.** The performance one moved to BL-059 because
+queries are the code it measures — an allocator that iterates in 0.15 ms is not
+what `04` §2's budget is about. BL-008 and BL-014 both listed `BL-007` as a
+dependency from when that id meant all three slices, so both were repointed to
+**BL-059**.
+
+### What changed
+
+`packages/client/src/sim/ecs/EntityAllocator.ts` (251 lines) and its test
+(217). Nothing else in the tree was touched.
+
+A handle is a single unsigned 32-bit number: **20 index bits, 12 generation
+bits**. `04` §4.3 pins `type EntityId = number` in one line and everything else
+follows from taking it literally — the handle survives `structuredClone`,
+mixes through `core/math/hash.ts` unchanged, and can sit in a component as a
+reference to another entity without introducing an object graph.
+
+32 bits rather than the 2⁵³ float range so the handle stays inside the int32
+world `hash.ts` and `Rng.ts` already occupy. The 20/12 split trades max-live
+(1,048,576) against reuses-per-index (4,095); it does **not** change the total
+handles the space can issue, which is 2³² either way. Both halves sit far above
+anything the docs budget for — `04` §2 measures at 3,000 entities, BL-059's
+criterion is stated at 10,000.
+
+### The two decisions worth reading
+
+**Generations start at 1.** Without that floor, index 0's first entity *is* the
+number `0`, and every `if (entity)` written anywhere in the codebase from now
+on would quietly mean "every entity except the first one". That is a bug class,
+not a style preference, and it is the reason `NULL_ENTITY` can be `0`.
+
+**A spent index is retired, not wrapped.** Rolling generation 4095 back to 1
+re-issues a handle that was already live — aliasing, which is precisely what
+the generation bits exist to prevent, arriving quietly after a few thousand
+reuses. Retiring costs one index out of a million and cannot produce a wrong
+answer. The allocator throws only when the *index* space is genuinely spent,
+which is the one unrecoverable state.
+
+`destroy()` on a stale or already-dead handle **returns `false` rather than
+throwing**: two systems reacting to the same event in one tick is a normal
+shape under `04` §4.4's intent/event design, not an error, and a caller that
+wants it to be one can check the return.
+
+### Tests
+
+13 cases, suite **253 pass / 0 fail / 0 todo** (was 240).
+
+The aliasing criterion is the one that needed care. "Recycled ids never alias"
+is a claim about a *set*, so the sweep runs the full 1,000,000 create/destroy
+cycles and checks each handle against **every handle issued so far** — a
+wrapping generation counter passes a check against the immediate predecessor
+4,094 times out of every 4,095.
+
+Perturbation table — every one caught:
+
+| perturbation | suites red |
+|---|---|
+| wrap the generation instead of retiring the index | 2 |
+| drop the `>>> 0` from `pack()` | 1 |
+| start generations at 0 | 5 |
+| `isLive` ignores the generation | 1 |
+| iterate descending instead of ascending index | 1 |
+
+The `>>> 0` one is worth naming: generations from 2048 up set bit 31, and
+JavaScript's bitwise operators yield *signed* int32, so without the shift a
+handle comes back **negative** — it still behaves in most code and hashes
+differently, which is the worst available failure shape.
+
+### Surprises
+
+- **`06`'s ban on non-null assertions collides head-on with
+  `noUncheckedIndexedAccess`.** Every read of a parallel array is
+  `number | undefined`, and `@typescript-eslint/no-non-null-assertion` is an
+  error, so the natural `this.generations[i]!` is not available. Existing sim
+  code (`PoissonDisk.ts`) reaches for `?? 0` at each site. Here that would be
+  five silent fallbacks, so it is one guarded accessor instead — and `0` is not
+  an arbitrary default: generations start at 1, so `0` already means "no such
+  entity" everywhere in the file. Neither doc is wrong; the interaction is just
+  not written down anywhere, and the next `sim/` module will hit it too.
+- **`@typescript-eslint/restrict-template-expressions` is off for `*.test.ts`
+  only.** An error message interpolating a number needs an explicit `String()`
+  in source but not in a test, which reads as an inconsistency until you find
+  the `files:` block in `eslint.config.js` that scopes it.
+
+### Documentation notes (type: `note`)
+
+- `AI_DEVELOPMENT_WORKFLOW.md` §6 and `CLAUDE.md` both give the verify block as
+  `pnpm lint && pnpm typecheck && pnpm test`, then `pnpm sim --ticks 20000
+  --assert-hash`, then `pnpm build && pnpm check:bundle`. **`pnpm test`,
+  `pnpm sim` and `pnpm check:bundle` still do not exist** (BL-015, BL-014, and
+  the bundle gate). What ran this session: `pnpm lint`, `pnpm typecheck`,
+  `pnpm test:node` (253 pass), `pnpm format:check`, `pnpm build` (client bundle
+  143.72 kB, **46.33 kB gzipped**, against `04`'s 600 kB gz budget). Same gap
+  the BL-002 and BL-006 entries recorded; stated again rather than skipped
+  silently, and it will keep being stated until BL-014/BL-015 land.
+- `tools/check-sim-purity.ts` is still referenced in the present tense by
+  `CLAUDE.md` and `06` and still does not exist (BL-017). This module would
+  pass it — no clock, no DOM, no `Math.random`, no module-level mutable state —
+  but that is inspection, not enforcement.
+
+### Follow-ups
+
+BL-058 and BL-059, the other two slices, both now in Ready directly below where
+BL-007 was. No new discovered work.
+
+---
+
 ## 2026-08-16 — BL-006 Typed event bus
 
 **Type:** feature
