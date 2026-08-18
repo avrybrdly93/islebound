@@ -34,6 +34,156 @@ What was added, and what it protects.
 
 ---
 
+## 2026-08-18 — BL-058 ECS-lite part 2: sparse-set component stores
+
+**Type:** feat
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~2h
+
+### What changed
+
+`sim/ecs/ComponentStore.ts`: `ComponentDef<T>` and `defineComponent`, the
+`Store<T>` interface `04` §4.3 declares, the sparse-set `ComponentStore<T>`,
+and `ComponentRegistry.store(def)` — which is `World.store(def)` standing
+alone, because there is still no `World` (BL-007's handoff note 6). 32 tests;
+suite **285 pass / 0 fail / 0 todo**, was 253. All three acceptance criteria
+met.
+
+### Why it was done this way
+
+**The dense array holds the whole handle, not the index.** BL-007's handoff
+said a store should key on `indexOf(e)`, and it should — for the *sparse* half.
+The dense half stores the full 32-bit handle so that `dense[pos] === e` is an
+exact identity test. Without it, entity `(index 7, gen 3)` is destroyed, index
+7 comes back as `(7, gen 4)`, and the new entity silently reads the old one's
+component. That is the exact failure the generation bits exist to catch, and it
+would arrive here rather than in the allocator.
+
+**`entities()` sorts by index, and that is not a detail.** "Ascending entity
+order" reads like "sort the numbers", and sorting the numbers is wrong: the
+generation occupies the high 12 bits, so a numeric handle sort orders by
+generation first. It agrees with an index sort in every fixture built from
+fresh entities — all of them generation 1 — and diverges the first time an
+index is recycled. One test constructs the disagreement outright: `(index 0,
+gen 2)` is `2_097_152` while `(index 1, gen 1)` is `1_048_577`, so the handle
+sort puts index 1 first. `04` §4.2 item 3 is what makes this a determinism bug
+rather than an aesthetic one.
+
+The sorted view is cached and invalidated by any mutation that can reorder it,
+so mutation stays O(1) and repeated iteration between mutations costs a scan.
+Overwriting a value does *not* invalidate it — the order cannot have changed —
+and there is a test for that, because a cache that is never reused is not a
+cache.
+
+**The destroyed-handle rule is asymmetric, deliberately.** Criterion 3 says
+"rejects (or ignores, documented either way)". `set` **throws**;
+`get`/`has`/`remove`/`entities` are tolerant. The reasoning: `destroy` returns
+`false` rather than throwing because a double-destroy is a normal race between
+two systems reacting to one event (`04` §4.4 makes that shape common) and the
+second call genuinely has nothing to do. A `set` in that same race is not
+nothing to do — it is a value the caller computed, and discarding it silently
+moves the bug somewhere else. There is no safe default for "resurrect or
+discard", so the store declines to pick one quietly.
+
+**Liveness is always `allocator.isLive`.** BL-007's handoff asked for exactly
+this and it is worth restating: nothing here re-derives liveness from
+generation bits. A second implementation of that rule is a second thing to keep
+in sync, and the two would drift on the retirement path first.
+
+**`prune()` exists because destroying an entity does not reach its
+components.** The allocator knows nothing about stores and there is no `World`
+to fan a destruction out, so a destroyed entity's slot lingers. It is invisible
+to every reader — `has`, `get` and `entities` all skip non-live handles — but
+it is memory, and a store with an unbounded leak and no way to address it is
+not complete. Wiring `prune`/`remove` into `World.destroyEntity` is BL-060.
+
+### Surprises
+
+**1. TypeScript parameter properties do not work in this repository, at all.**
+`constructor(private readonly allocator: EntityAllocator)` typechecks, lints,
+and then fails at *run* time with
+`ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX: TypeScript parameter property is not
+supported in strip-only mode`. The test runner is `node --test` over Node's
+type stripping (`package.json` → `test:node`), which refuses any syntax whose
+removal would change runtime behaviour — and a parameter property is exactly
+that. Nothing in `06`, `07` or `05` mentions it, and no existing module has a
+constructor with arguments, so this repository had not met it yet. Both
+constructors here use explicit fields with a comment pointing at this entry.
+**This will bite every future class that takes constructor arguments**, which
+from Phase 0 onward is most of them.
+
+**2. A bug found by re-reading, not by a test: swap-remove clears the wrong
+sparse slot.** The first version of `removeAt` moved the last entry into the
+freed position and *then* read `dense[last]` to clear the removed entity's
+sparse slot — but by then `dense[last]` held the entity that had just been
+moved, so the clear undid the assignment two lines above and made a live
+component unreachable. It is invisible to any test that removes only the last
+element, which is what a first test naturally does. The fix is one reordering;
+the test that grades it removes from the middle of five, and it is confirmed
+red against the original ordering.
+
+**3. `pnpm test`, `pnpm sim` and `pnpm check:bundle` do not exist.**
+`AI_DEVELOPMENT_WORKFLOW.md` §6 and `CLAUDE.md` both give a verify block naming
+all three. The real script is `pnpm test:node`; `sim` is BL-014 and
+`check:bundle` is BL-018, both unbuilt, and `tools/check-sim-purity.ts` (named
+in `CLAUDE.md`) is BL-017 and does not exist either. This is a *docs ahead of
+code* gap in Phase 0 rather than an error, and it will close as those tasks
+land — but a fresh agent following the verify block literally gets three
+command-not-found errors and no signal about which are real. Filed as **BL-062**
+to add a note rather than silently living with it.
+
+### A soft limit knowingly exceeded
+
+`ComponentStore.ts` is **440 lines** against `CLAUDE.md`'s "≤ 300 soft / 500
+hard". Roughly 55% of it is doc comment, the same density as
+`EntityAllocator.ts` (251 lines). Splitting the registry into its own file
+would fix the number, but BL-058's own description names one file for all three
+pieces and `05` lists three files in `sim/ecs/`. Judgement call: kept as one
+file, under the hard limit, recorded here.
+
+### Tests
+
+32 cases, grouped by criterion, in `ComponentStore.test.ts`.
+
+- **Criterion 1** (`structuredClone` round-trips): a nested component, one
+  holding an `EntityId` that still validates against the allocator after the
+  clone, and a clone of *every* stored value — which is the case that catches a
+  store that wrapped its values in anything uncloneable.
+- **Criterion 2** (ascending order, always): out-of-order insertion, order
+  after a swap-remove reordered the dense array, the index-vs-handle
+  disagreement above, agreement with `allocator.liveEntities()` after churn,
+  cache invalidation on insert and on remove, and *non*-invalidation on an
+  overwrite.
+- **Criterion 3** (no resurrection): both halves, which are different code
+  paths — a destroyed handle must not read its own leftover data (the liveness
+  check), and a recycled index must not read its predecessor's (the handle
+  identity test). A store can pass either alone.
+
+**Five perturbations, all applied, run and reverted:**
+
+| perturbation | tests turned red |
+|---|---|
+| sort by handle instead of by index | 2 |
+| drop the `dense[pos] === e` identity test | 1 |
+| skip the liveness check in `set` | 2 |
+| clear the sparse slot *after* the swap (surprise 2's bug) | 2 |
+| drop the liveness filter from `entities()` | 4 |
+
+Gate: `pnpm lint`, `pnpm typecheck`, `pnpm format:check`, `pnpm lint:rules` and
+`pnpm build` all clean; `pnpm test:node` **285/285**. `pnpm sim --assert-hash`
+was **not** run — the script does not exist yet (surprise 3).
+
+### Follow-ups
+
+- **BL-060** — `World.destroyEntity` must reach the component stores.
+- **BL-061** — assemble the `World` class from the allocator, the stores and
+  BL-059's queries.
+- **BL-062** — the verify block in `AI_DEVELOPMENT_WORKFLOW.md` and `CLAUDE.md`
+  names three commands that do not exist yet.
+
+---
+
 ## 2026-08-18 — BL-007 ECS-lite part 1: the entity allocator
 
 **Type:** feat

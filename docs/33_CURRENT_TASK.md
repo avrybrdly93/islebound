@@ -4,64 +4,92 @@
 
 ---
 
-## Status: IN_PROGRESS
+## Status: IDLE
 
-## Current task
-**BL-058** — ECS-lite part 2: sparse-set component stores
-- **Phase:** 0
-- **Started:** 2026-08-18
-- **Branch:** pushed direct to `main` (repo convention — see `34`'s recent entries)
-- **Docs read:** AI_DEVELOPMENT_WORKFLOW, 32, 33, 34 (last 3), 35, 04, 05, 06, 07
-- **Estimated size:** M
+No task in progress. **BL-058 is complete** — all three acceptance criteria are
+met. See `34_DEVELOPMENT_LOG.md` 2026-08-18 (BL-058) for the perturbation table
+and the three surprises.
 
-Selected as the topmost unblocked task in Phase 0's Ready list. `BL-056` still
-sits above it and is still **Phase 1**, so it is still not a candidate under the
-workflow's phase discipline — third session running.
+## Next action for an agent
 
-### Plan
-1. `ComponentDef<T>` + `defineComponent<T>(name)` — a branded, phantom-typed
-   descriptor so a def carries its component type without carrying a value.
-2. `ComponentStore<T>` — sparse set over **entity index**, holding the full
-   handle in the dense array so a recycled index cannot serve the previous
-   entity's data.
-3. Decide and document the destroyed-handle behaviour per criterion 3 (reject
-   or ignore), asymmetrically if that is what is defensible.
-4. `ComponentRegistry.store(def)` — the `World.store(def)` accessor of `04`
-   §4.3, standing alone because there is still no `World` (BL-007's handoff
-   note 6).
-5. Tests: the three acceptance criteria, plus perturbations.
-6. Docs: `34` entry with surprises, `32` handoff, `33` back to IDLE.
+The topmost unblocked task in Phase 0's Ready list, per
+`AI_DEVELOPMENT_WORKFLOW.md` §2. As of this session that is **BL-059**
+(ECS-lite part 3, cached queries by component signature, M, depends on BL-058
+which is now done).
 
-### Progress
-- [ ] Step 1
-- [ ] Step 2
-- [ ] Step 3
-- [ ] Step 4
-- [ ] Step 5
-- [ ] Step 6
+**Read the file, do not trust this line.** `BL-056` still sits above it in
+Ready and is still Phase 1, so it is still not a candidate under the workflow's
+phase discipline — third session running. The three items this session filed
+(BL-060, BL-061, BL-062) sit *below* BL-059 and two of them depend on it.
 
-### Decisions made during implementation
-- (filled in as they are made)
+## Read this before writing a class with a constructor
 
-### Discovered work (added to backlog, NOT done in this task)
-- (filled in at handoff)
+**TypeScript parameter properties do not work in this repository.**
 
-### Blockers
-- None
+```ts
+constructor(private readonly allocator: EntityAllocator) {}   // typechecks, lints, CRASHES
+```
 
-### Notes for the next session
-The two things already known to be traps before a line was written, both from
-BL-007's handoff:
+`pnpm test:node` runs `node --test` over Node's strip-only type stripping,
+which refuses any syntax whose removal changes runtime behaviour:
+`ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX: TypeScript parameter property is not
+supported in strip-only mode`. Declare the field and assign it in the
+constructor body instead. Nothing in `06`, `07` or `05` says so, and no module
+before `ComponentStore.ts` had a constructor with arguments — so this is the
+first time the repository has met it, and it will now meet it constantly.
 
-1. **"Ascending entity order" must mean ascending *index*, not ascending
-   handle.** The generation lives in the high 12 bits, so sorting handles
-   numerically orders by generation first and index second. A store that sorts
-   raw handles passes every test built from freshly created entities and
-   reorders itself the moment an index is recycled.
-2. **The allocator is the single owner of the liveness judgement** (`isLive`).
-   A store must not re-derive it.
+## What BL-058 leaves for BL-059
 
----
+1. **The store is `ComponentStore<T>` and the accessor is
+   `ComponentRegistry.store(def)`.** A query wants `registry.store(def)` per
+   def, then the intersection of their entity sets.
+2. **Iterate `store.entities()`, and do not re-sort its output.** It is already
+   ascending **by index** and already filtered to live entities. Re-sorting by
+   handle would undo both — see the log entry; the generation bits sit above
+   the index, so a numeric handle sort orders by generation first.
+3. **The cheapest intersection starts from the smallest store.** `store.size`
+   is O(1) and includes not-yet-pruned dead slots, so it is an upper bound
+   rather than an exact live count — fine for choosing which store to drive the
+   loop from, wrong as a result count.
+4. **BL-059's criterion is where the performance budget lives** — 10,000
+   entities × 6 components ≤ 0.15 ms. `entities()` sorts on first use after a
+   mutation and caches; a query that calls it once per component per tick is
+   already paying six sorts. Consider driving from the smallest store's
+   `entities()` and using `has()` (O(1)) on the rest.
+5. **Cache invalidation is the third criterion and it is not free.** The store
+   invalidates its *own* sorted view on mutation but tells nobody. A query
+   cache needs a signal — a per-store mutation counter is the smallest thing
+   that works, and it does not exist yet. Adding it is part of BL-059, not a
+   separate task.
+6. **`prune()` changes `size` but nothing observable.** A query cache keyed on
+   `size` would invalidate on a prune that changed no result. Key on a
+   mutation counter, not on size.
+
+## What BL-007 leaves for BL-058 and BL-059
+
+*(BL-058 is done; these six notes are kept because points 3–6 still apply to
+BL-059.)*
+
+1. **The handle is one unsigned 32-bit number**: `indexOf(e)` gives the low 20
+   bits, `generationOf(e)` the high 12. A component store should key on
+   **`indexOf(e)`** — which `ComponentStore`'s *sparse* half does; its dense
+   half stores the whole handle so a recycled index cannot inherit.
+2. **`isLive(e)` is the staleness check**, and BL-058's third criterion was
+   exactly a call to it. The allocator remains the single owner of that
+   judgement.
+3. **Ascending iteration is by index, and `liveEntities()` is O(capacity)**, a
+   scan of the index range. That is deliberate and it is *not* where the
+   performance criterion lives — BL-059's cached queries carry the 10,000 × 6
+   ≤ 0.15 ms budget, and a query must not be built by filtering
+   `liveEntities()` per call if that budget is to be met.
+4. **`retiredCount` climbs under heavy churn and that is normal**, not a leak:
+   an index whose 4,095 generations are spent is withdrawn rather than wrapped.
+   Only `create()` throws, and only when the index space itself is gone.
+5. **`NULL_ENTITY` is `0` and is never live.** Safe as an "absent" value in a
+   component field, which is why generations start at 1.
+6. **There is still no `World` class.** BL-007's handoff asked whether the
+   assembly deserves its own item; BL-058 decided it does and filed **BL-061**.
+   BL-060 (destroy must reach the stores) depends on it.
 
 ## Template — copy this block when starting a task
 

@@ -39,9 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-### BL-058 — ECS-lite part 2: sparse-set component stores
-- **Phase:** 0 · **Size:** M · **Depends on:** BL-007 (done) · **Docs:** 04, 07
-- Claimed 2026-08-18 as the topmost unblocked Phase 0 task. `BL-056` still sits above it in Ready and is still Phase 1, so it is still not a candidate. Full plan in `33_CURRENT_TASK.md`.
+*(nothing — pick the topmost unblocked task from Ready)*
 
 ---
 
@@ -56,15 +54,6 @@ Current phase: **Phase 0 — Foundation**
   - [ ] Whatever is decided is recorded in `40_DECISION_LOG.md`
 - **Notes:** Filed 2026-08-15 by BL-054 rather than fixed inline: it is a judgement about how the island looks, it needs the renderer to answer, and guessing now would either cost 9x for nothing or bake in an artefact. `12` §"Scatter" already softens the visual consequence with clumping, so it may well be invisible.
 
-### BL-058 — ECS-lite part 2: sparse-set component stores
-- **Phase:** 0 · **Size:** M · **Depends on:** BL-007 · **Docs:** 04, 07
-- **Description:** `sim/ecs/ComponentStore.ts`: the `Store<T>` interface from `04` §4.3 (`has`/`get`/`set`/`remove`/`entities`) backed by a sparse set, plus `ComponentDef<T>` and the `World.store(def)` accessor. Components stay plain serialisable data — no methods, no class instances, no object references, only `EntityId`s.
-- **Acceptance criteria:**
-  - [ ] `structuredClone` of any component round-trips losslessly
-  - [ ] `entities()` yields in ascending entity order, always
-  - [ ] A store rejects (or ignores, documented either way) a destroyed entity's handle rather than resurrecting it
-- **Notes:** Split out of BL-007 on 2026-08-18. Depends on the allocator for the generation check that makes a stale handle detectable.
-
 ### BL-059 — ECS-lite part 3: cached queries by component signature
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-058 · **Docs:** 04, 07
 - **Description:** `sim/ecs/Query.ts`: `World.query(...defs)` returning entities sorted ascending, computed lazily and cached per-tick by component-set signature (`04` §4.3), with cache invalidation on store mutation.
@@ -73,6 +62,30 @@ Current phase: **Phase 0 — Foundation**
   - [ ] Query results are in ascending entity order, always
   - [ ] A component added or removed mid-tick is reflected, not served from a stale cache
 - **Notes:** Split out of BL-007 on 2026-08-18. This slice carries the performance criterion, because it is the only one of the three whose cost the criterion is actually about. **BL-008 and BL-014 named `BL-007` as a dependency when BL-007 meant all three slices; both now name BL-059**, which is the slice that completes what they were waiting for.
+
+### BL-060 — `World.destroyEntity` must reach the component stores
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-061 · **Docs:** 04
+- **Description:** Destroying an entity currently leaves its components in every store. Nothing reads them — `has`, `get` and `entities` all skip non-live handles — but the slots are memory, reclaimed only when the index is reused or `ComponentStore.prune()` is called by hand. `World.destroyEntity` should fan the destruction out (per-store `remove`, or a `prune` sweep on a cadence — decide which, and say why).
+- **Acceptance criteria:**
+  - [ ] After `destroyEntity(e)`, no store holds a slot for `e`
+  - [ ] The cost is stated: per-store `remove` is O(stores) per destroy; a deferred sweep is O(size) per sweep. Whichever is chosen, the other is named in a comment
+- **Notes:** Filed 2026-08-18 by BL-058, which built `prune()` as the interim answer rather than leaving the store with a leak it had no way to address. Depends on BL-061 because there is no `World` to put this in yet.
+
+### BL-061 — Assemble the `World` class
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-059 · **Docs:** 04, 05
+- **Description:** `04` §4.3 sketches `World` as holding `tick`, `createEntity`/`destroyEntity`, `store(def)`, `query(...defs)`, `events` and `step(dt)`. Every piece now exists separately — `EntityAllocator` (BL-007), `ComponentRegistry` (BL-058), queries (BL-059), `EventBus` (BL-006). This is the assembly, delegating rather than reimplementing.
+- **Acceptance criteria:**
+  - [ ] `World.store(def)` delegates to `ComponentRegistry`, `createEntity`/`destroyEntity` to `EntityAllocator` — no second implementation of either
+  - [ ] `step(dt)` runs systems in the order `sim/systems/order.ts` declares (`04` §4.3), and that order is data, not code
+- **Notes:** Filed 2026-08-18 by BL-058. BL-007's handoff note 6 asked whether the assembly deserves its own item; it does — `step` and the system-order array are real work that belongs to neither BL-058 nor BL-059.
+
+### BL-062 — The verify block names three commands that do not exist
+- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
+- **Description:** `AI_DEVELOPMENT_WORKFLOW.md` §6 and `CLAUDE.md` both tell an agent to run `pnpm lint && pnpm typecheck && pnpm test`, `pnpm sim --ticks 20000 --assert-hash`, and `pnpm build && pnpm check:bundle`. Of those, `pnpm test` is really `pnpm test:node`, `pnpm sim` is BL-014, `pnpm check:bundle` is BL-018, and `tools/check-sim-purity.ts` (named in `CLAUDE.md`) is BL-017. All are unbuilt, which is correct for Phase 0 — but an agent following the block literally gets three command-not-found errors and no way to tell which are expected.
+- **Acceptance criteria:**
+  - [ ] Either the script names match the docs, or both docs mark the not-yet-built commands with the BL that will build them
+  - [ ] `pnpm test` exists as an alias, or the docs stop naming it
+- **Notes:** Filed 2026-08-18 by BL-058, which hit all three. Deliberately *not* fixed inline — `35` §3 forbids expanding scope, and renaming a script is a change to every doc and CI file that names it.
 
 ### BL-008 — Fixed-timestep game loop
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-059 · **Docs:** 04, 09
@@ -386,6 +399,10 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-058 — ECS-lite part 2: sparse-set component stores
+- **Completed:** 2026-08-18 · **PR:** — (pushed direct to `main`)
+- `sim/ecs/ComponentStore.ts`: `ComponentDef<T>`/`defineComponent`, the `Store<T>` interface of `04` §4.3, the sparse-set `ComponentStore<T>` (`has`/`get`/`set`/`remove`/`entities`/`size`/`prune`), and `ComponentRegistry.store(def)` — which is `World.store(def)` standing alone, because there is still no `World` (BL-007 handoff note 6, now filed as BL-061). 32 tests; suite **285 pass / 0 fail / 0 todo**, was 253. All three acceptance criteria met. **The dense array holds the whole 32-bit handle, not the index**, so `dense[pos] === e` is an exact identity test and a recycled index misses instead of inheriting its predecessor's component. **`entities()` sorts by INDEX, not by handle** — the generation is in the high 12 bits, so a numeric handle sort orders by generation first and agrees with an index sort in every fresh fixture, diverging only once an index is recycled; one test constructs the disagreement, where `(index 0, gen 2)` is the larger number and the smaller index. Criterion 3's reject-or-ignore choice is resolved **asymmetrically and documented**: `set` throws, `get`/`has`/`remove`/`entities` are tolerant, because a second destroy is a normal two-systems-one-event race with nothing to do while a second `set` is a computed value that would be silently lost. Liveness is always `allocator.isLive` — never re-derived. Five perturbations all caught (sort by handle, drop the identity test, skip the liveness check in `set`, clear the sparse slot after the swap, drop the liveness filter from `entities`). Discovered work: BL-060, BL-061, BL-062. **Surprise:** TypeScript parameter properties fail at *runtime* under this repo's `node --test` type stripping (`ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`) while typechecking and linting cleanly — this repository had no constructor with arguments before now, so nothing had met it. **Second surprise:** a swap-remove bug found by re-reading rather than by a test, clearing the moved entry's sparse slot instead of the removed one's; invisible to any test that removes only the last element.
 
 ### BL-007 — ECS-lite part 1: the entity allocator
 - **Completed:** 2026-08-18 · **PR:** — (pushed direct to `main`)
