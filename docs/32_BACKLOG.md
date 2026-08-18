@@ -39,7 +39,9 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-*(nothing — pick the topmost unblocked task from Ready)*
+### BL-058 — ECS-lite part 2: sparse-set component stores
+- **Phase:** 0 · **Size:** M · **Depends on:** BL-007 (done) · **Docs:** 04, 07
+- Claimed 2026-08-18 as the topmost unblocked Phase 0 task. `BL-056` still sits above it in Ready and is still Phase 1, so it is still not a candidate. Full plan in `33_CURRENT_TASK.md`.
 
 ---
 

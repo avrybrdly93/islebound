@@ -4,172 +4,62 @@
 
 ---
 
-## Status: IDLE
+## Status: IN_PROGRESS
 
-No task in progress. **BL-007 is complete** — all four acceptance criteria are
-met. See `34_DEVELOPMENT_LOG.md` 2026-08-18 for the measurements, the
-perturbation table and the two surprises.
+## Current task
+**BL-058** — ECS-lite part 2: sparse-set component stores
+- **Phase:** 0
+- **Started:** 2026-08-18
+- **Branch:** pushed direct to `main` (repo convention — see `34`'s recent entries)
+- **Docs read:** AI_DEVELOPMENT_WORKFLOW, 32, 33, 34 (last 3), 35, 04, 05, 06, 07
+- **Estimated size:** M
 
-## Next action for an agent
+Selected as the topmost unblocked task in Phase 0's Ready list. `BL-056` still
+sits above it and is still **Phase 1**, so it is still not a candidate under the
+workflow's phase discipline — third session running.
 
-The topmost unblocked task in Phase 0's Ready list, per
-`AI_DEVELOPMENT_WORKFLOW.md` §2. As of this session that is **BL-058**
-(ECS-lite part 2, sparse-set component stores, M, depends on BL-007 which is
-now done).
+### Plan
+1. `ComponentDef<T>` + `defineComponent<T>(name)` — a branded, phantom-typed
+   descriptor so a def carries its component type without carrying a value.
+2. `ComponentStore<T>` — sparse set over **entity index**, holding the full
+   handle in the dense array so a recycled index cannot serve the previous
+   entity's data.
+3. Decide and document the destroyed-handle behaviour per criterion 3 (reject
+   or ignore), asymmetrically if that is what is defensible.
+4. `ComponentRegistry.store(def)` — the `World.store(def)` accessor of `04`
+   §4.3, standing alone because there is still no `World` (BL-007's handoff
+   note 6).
+5. Tests: the three acceptance criteria, plus perturbations.
+6. Docs: `34` entry with surprises, `32` handoff, `33` back to IDLE.
 
-**Read the file, do not trust this line.** `BL-056` still sits above it in
-Ready and is still Phase 1, so it is still not a candidate under the workflow's
-phase discipline — same as last session.
+### Progress
+- [ ] Step 1
+- [ ] Step 2
+- [ ] Step 3
+- [ ] Step 4
+- [ ] Step 5
+- [ ] Step 6
 
-## What BL-007 leaves for BL-058 and BL-059
+### Decisions made during implementation
+- (filled in as they are made)
 
-1. **The handle is one unsigned 32-bit number**: `indexOf(e)` gives the low 20
-   bits, `generationOf(e)` the high 12. A component store should key on
-   **`indexOf(e)`**, not on the handle — the index is the dense, array-shaped
-   half, and the generation is what makes a stale handle detectable.
-2. **`isLive(e)` is the staleness check**, and BL-058's third criterion ("a
-   store rejects a destroyed entity's handle rather than resurrecting it") is
-   exactly a call to it. Keep the allocator as the single owner of that
-   judgement; a store that re-derives it will drift.
-3. **Ascending iteration is by index, and `liveEntities()` is O(capacity)**, a
-   scan of the index range. That is deliberate and it is *not* where the
-   performance criterion lives — BL-059's cached queries carry the 10,000 x 6
-   ≤ 0.15 ms budget, and a query must not be built by filtering
-   `liveEntities()` per call if that budget is to be met.
-4. **`retiredCount` climbs under heavy churn and that is normal**, not a leak:
-   an index whose 4,095 generations are spent is withdrawn rather than wrapped.
-   Only `create()` throws, and only when the index space itself is gone.
-5. **`NULL_ENTITY` is `0` and is never live.** Safe as an "absent" value in a
-   component field, which is why generations start at 1.
-6. **There is still no `World` class.** `04` §4.3 sketches one holding `tick`,
-   the stores, `query`, `events` and `step`. BL-058 and BL-059 build the two
-   remaining pieces; whoever assembles `World` from them should check whether
-   that assembly deserves its own backlog item rather than being absorbed.
+### Discovered work (added to backlog, NOT done in this task)
+- (filled in at handoff)
 
-## What BL-006 leaves for whoever needs events
+### Blockers
+- None
 
+### Notes for the next session
+The two things already known to be traps before a line was written, both from
+BL-007's handoff:
 
-
-1. **`EventBus` is generic over an event map, and the map may be an
-   `interface`.** It cannot be constrained to `Record<string, unknown>` —
-   TypeScript gives implicit index signatures to type aliases only. If you find
-   yourself writing `type GameEvents = {...}` to satisfy a constraint, the
-   constraint is already `object` and you do not need to.
-2. **There is no `SimEvent` union yet, and no `sim/events/` directory.** `05`
-   describes one; BL-006 deliberately did not create it, because nothing emits
-   a sim event until BL-007/BL-008 exist. Derive it from the map when the sim
-   needs one to serialise.
-3. **Use `enqueue`/`drain`, not `emit`, for anything the simulation produces.**
-   `emit` runs handlers synchronously inside whatever is emitting, which lets a
-   subscriber observe half-updated state and makes tick ordering depend on who
-   subscribed. `drain()` is called once per tick by the loop's owner — BL-008
-   is what will decide where.
-4. **A drain is a bounded batch.** Events enqueued during a drain wait for the
-   next one, on purpose. Do not "fix" that into a loop-until-empty: a handler
-   that re-enqueues its own event would not terminate.
-
-## Two things to be careful about
-
-**Do not replace the tombstone in `on`'s unsubscribe with a `splice`.** It
-looks equivalent and is not, and the difference is invisible to the obvious
-test. Splicing a *later* handler behaves correctly; splicing an
-*already-called* one slides every later handler down past the dispatch
-cursor and silently drops the last. Two tests exist for precisely this and
-they are the only two that catch it — measured, see the log entry.
-
-**The zero-allocation assertions carry a `repeats: 6` that is load-bearing,
-and BL-057 explains why.** The allowance derived from the control can land
-below the profiler's own sampling interval, which makes one stray sample a
-failure. Do not remove the `repeats` without reading that item; the symptom is
-a test that fails roughly once in fourteen runs and passes on retry.
-
----
-
----
-
-## Last completed: BL-004 — Core math module (closed 2026-08-13 via BL-050)
-
-All three acceptance criteria are met:
-
-| Acceptance criterion | State |
-|---|---|
-| ≥ 95% unit coverage | **met** — 100% of lines and functions on all eight source modules, 96.8–100% of branches |
-| Spring framerate-independent, against an analytic solution | **met** — 30/60/144 Hz and a single jump agree to 1e-12, all four agree with the closed form |
-| Zero allocation, by a counter-instrumented harness | **met 2026-08-13** — all 30 operations read exactly 0 attributed bytes; see below |
-
-Suite: **142 assertions pass, 0 fail, 0 todo** (was 131 / 0 / 16 — the 16 `todo`
-were all this criterion). `pnpm lint`, `lint:rules`, `typecheck`,
-`format:check`, `build` and `test:node` all pass.
-
-### How the open criterion was closed, and why it took a second instrument
-
-**The code was never the problem.** The `heapUsed`-rise harness measured a
-process-wide quantity — the sum of heap increases across sampled points — and
-divided it by *one* operation's iteration count. So any other allocation
-happening in the process during that loop was charged to the operation under
-measurement. That is why three to five of thirty allocation-free operations
-reported exactly one returned object's worth of bytes, reproducibly, and why
-**the set changed when unrelated parts of the test file changed**.
-
-`measureAttributedAllocation` runs the operation under V8's **sampling heap
-profiler**, which records a stack trace at sampled allocations. Every byte is
-attributed to the code that allocated it, so another test's garbage lands under
-another test's frames and cannot reach this reading. It is also independent of
-when the collector runs, which is what defeated the original before/after delta.
-
-Result: all 30 operations, **including the five the old instrument could not
-clear** (`addScaled`, aliased `add`, `rotateVec3`, `union`, `stepSpring`), read
-exactly **0** attributed bytes, against a control that allocates one small
-object per call and reads **~115 kB** in the same process on the same runs.
-
-### Three decisions the next session should not re-open
-
-1. **The critically damped spring steps by the exact closed-form solution**
-   rather than integrating towards it. Framerate independence is then exact
-   rather than approximate, the integrator is unconditionally stable at any
-   `dt` (an explicit scheme diverges above `dt = 2/ω`, which at ω = 12 is one
-   dropped frame), and the acceptance criterion's "verified against an analytic
-   solution" is satisfiable because it *is* the analytic solution.
-2. **Numbers are hashed by their IEEE bits, not their decimal form**, because
-   `String(-0) === '0'` and two world states differing by a sign of zero must
-   not hash alike. That in turn surfaced BL-051.
-3. **The allocation allowance is derived from the control measured in the same
-   process, not from a constant.** A constant threshold cannot distinguish "this
-   operation allocates nothing" from "the profiler recorded nothing" — and the
-   first dead end here was an instrument whose signal was always zero, which
-   passes everything. Both ways of blinding the current instrument
-   (`samplingInterval` 65536, a stale `MEASURED_LOOP_NAME`) were exercised: each
-   turns 13 passes into 11 failures naming the cause.
-
-### What the new figure is not
-
-**Not bytes per operation.** The sampling profiler under-reports absolute volume
-by roughly two orders of magnitude here — 200k iterations of a ~47-byte-per-call
-allocator should total ~9.4 MB and it attributes ~90–115 kB — because
-young-generation allocation from optimised code mostly takes a bump-pointer fast
-path V8 does not sample. That is adequate for an *allocates / does not*
-criterion, where the separation measured is total (tens of thousands of bytes
-versus exactly zero), and would be useless for a byte budget. If a later task
-needs an actual byte figure, this instrument is the wrong one.
-
-### Discovered work (filed, not done)
-- **BL-051** — whether `-0` may reach world state, given that it hashes
-  differently from `0` and is invisible in a debugger.
-- **BL-052** — three hand-synced copies of the path-alias map, now that
-  `tools/aliasResolver.mjs` is the third.
-- **BL-053** — `--expose-gc` is no longer needed by any test, filed 2026-08-13.
-
-### Gate gap, carried and still true
-There is no Vitest and no `pnpm sim`. Tests run on `node:test` +
-`node:assert/strict` — standard library, no dependency added — via
-`pnpm test:node`, with coverage from Node's own
-`--experimental-test-coverage`. **BL-015 should port these suites to Vitest, not
-rewrite them**, and should delete `tools/aliasResolver.mjs`,
-`tools/registerAliases.mjs`, the two `test:node*` scripts and the test-file
-block in `eslint.config.js` together. Note BL-050 did **not** need BL-015 —
-its backlog entry listed BL-015 as a dependency on the theory that Vitest might
-not have the ordering problem, and the problem turned out to be the instrument
-rather than the runner.
+1. **"Ascending entity order" must mean ascending *index*, not ascending
+   handle.** The generation lives in the high 12 bits, so sorting handles
+   numerically orders by generation first and index second. A store that sorts
+   raw handles passes every test built from freshly created entities and
+   reorders itself the moment an index is recycled.
+2. **The allocator is the single owner of the liveness judgement** (`isLive`).
+   A store must not re-derive it.
 
 ---
 
