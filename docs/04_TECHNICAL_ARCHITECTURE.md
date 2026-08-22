@@ -110,7 +110,13 @@ class World {
 
 - Components are **plain serialisable data**. No methods, no class instances, no references to other objects — only `EntityId`s.
 - Systems are **pure functions of `(world, dt)`** registered in an explicit order array. Order is data in `sim/systems/order.ts` so it is reviewable.
-- Queries are computed lazily and cached per-tick by component-set signature.
+- Queries are computed lazily and cached by component-set signature. **Invalidation is
+  version-keyed, not tick-keyed** (BL-059): a cached result records the mutation counter of
+  every store it was computed from plus the allocator's, and is reused only while all still
+  match. That is strictly fresher than clearing once per tick — a component added or removed
+  *mid*-tick is reflected immediately, which §4.4's intent-in/event-out shape makes the
+  normal case — and also cheaper, since a cache nothing invalidated survives across ticks.
+  See `sim/ecs/Query.ts` and decision 0024.
 
 Component list (initial): `Transform`, `Velocity`, `PlayerTag`, `Renderable`, `Collider`, `Interactable`, `ResourceNode`, `Inventory`, `ItemStack`, `Structure`, `Crop`, `Animal`, `AiState`, `Growth`, `Lifetime`, `NetSynced`, `Owner`.
 
