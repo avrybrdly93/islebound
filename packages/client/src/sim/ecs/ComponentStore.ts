@@ -177,6 +177,25 @@ export class ComponentStore<T> implements Store<T> {
   /** Ascending-by-index view of {@link dense}, rebuilt on demand. */
   private sortedCache: EntityId[] | undefined = undefined;
 
+  /**
+   * Monotonic counter bumped by every mutation that can change *which*
+   * entities this store holds, or their order.
+   *
+   * Added by BL-059, which needs an invalidation signal a query cache can
+   * compare cheaply: the store invalidates its own {@link sortedCache} on
+   * mutation but tells nobody, so a cache built on top has no way to know.
+   *
+   * **It is bumped in exactly the places `sortedCache` is cleared, and that
+   * pairing is deliberate rather than incidental.** "The sorted view is no
+   * longer valid" and "a query over this store may have a different answer"
+   * are the same condition — membership or order changed — so keeping them on
+   * the same lines is what stops the two from drifting apart as this class
+   * grows. In particular a {@link set} that only replaces the *value* for an
+   * entity already present does neither: it cannot change any query result,
+   * and it does not bump.
+   */
+  private mutations = 0;
+
   /** The allocator that owns the liveness judgement for every handle here. */
   private readonly allocator: EntityAllocator;
 
@@ -196,6 +215,19 @@ export class ComponentStore<T> implements Store<T> {
   /** Number of stored components, live and not-yet-pruned alike. */
   get size(): number {
     return this.dense.length;
+  }
+
+  /**
+   * How many membership- or order-changing mutations this store has seen.
+   *
+   * A cache holds the value it last computed against and compares; anything
+   * else is an equality test on the store's contents, which is the work the
+   * cache exists to avoid. Monotonic, so it cannot return to a previous value
+   * the way {@link size} can — a component added and another removed leaves
+   * `size` unchanged and this number two higher.
+   */
+  get version(): number {
+    return this.mutations;
   }
 
   /**
@@ -256,6 +288,7 @@ export class ComponentStore<T> implements Store<T> {
       this.dense[existing] = entity;
       this.values[existing] = value;
       this.sortedCache = undefined;
+      this.mutations += 1;
       return;
     }
 
@@ -263,6 +296,7 @@ export class ComponentStore<T> implements Store<T> {
     this.dense.push(entity);
     this.values.push(value);
     this.sortedCache = undefined;
+    this.mutations += 1;
   }
 
   /**
@@ -280,6 +314,7 @@ export class ComponentStore<T> implements Store<T> {
     if (position === ABSENT) return false;
     this.removeAt(position);
     this.sortedCache = undefined;
+    this.mutations += 1;
     return true;
   }
 
@@ -359,7 +394,10 @@ export class ComponentStore<T> implements Store<T> {
       this.removeAt(position);
       dropped += 1;
     }
-    if (dropped > 0) this.sortedCache = undefined;
+    if (dropped > 0) {
+      this.sortedCache = undefined;
+      this.mutations += 1;
+    }
     return dropped;
   }
 }

@@ -129,6 +129,29 @@ export class EntityAllocator {
   private retiredIndexCount = 0;
 
   /**
+   * Monotonic counter bumped by every {@link destroy} that actually destroyed
+   * something.
+   *
+   * Added by BL-059. A component store's own counter cannot see this: an
+   * entity can be destroyed without any store being touched, and every store's
+   * `entities()` then silently stops yielding it. A query cache holding a
+   * plain array of handles would keep serving the dead one.
+   *
+   * **`create` deliberately does not bump it, and that is a claim rather than
+   * an oversight.** A freshly created entity has a component in no store — a
+   * recycled index cannot inherit one either, because the dense array holds
+   * whole handles and the old generation is not the new one — so it is a
+   * member of no query until some store's `set` bumps *that* store's version.
+   * Bumping here as well would invalidate every cache on every spawn, which in
+   * a game loop is every tick. `Query.test.ts` pins the claim.
+   *
+   * Monotonic for the reason {@link liveCount} is not usable in its place:
+   * one create and one destroy in the same tick leave `liveCount` where it
+   * started while the live set has changed.
+   */
+  private destructions = 0;
+
+  /**
    * Current generation of an index, or `0` for an index that does not exist.
    *
    * `noUncheckedIndexedAccess` is on, so every read of the parallel arrays is
@@ -144,6 +167,17 @@ export class EntityAllocator {
   /** Number of live entities. */
   get liveCount(): number {
     return this.liveEntityCount;
+  }
+
+  /**
+   * How many entities have been destroyed over this allocator's lifetime.
+   *
+   * The invalidation signal for anything caching a set of handles; see
+   * {@link destructions} for why `create` is absent from it and why
+   * {@link liveCount} will not do.
+   */
+  get version(): number {
+    return this.destructions;
   }
 
   /**
@@ -206,6 +240,8 @@ export class EntityAllocator {
     const index = indexOf(entity);
     this.alive[index] = false;
     this.liveEntityCount -= 1;
+
+    this.destructions += 1;
 
     const generation = this.generationAt(index);
     if (generation >= MAX_GENERATION) {
