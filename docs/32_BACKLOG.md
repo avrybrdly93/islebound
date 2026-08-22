@@ -39,7 +39,9 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-*(nothing — pick the topmost unblocked task from Ready)*
+**BL-059** — ECS-lite part 3: cached queries by component signature. Claimed
+2026-08-22; see `33_CURRENT_TASK.md` for the plan and progress. Its entry stays
+in Ready below until it is moved to Done.
 
 ---
 
