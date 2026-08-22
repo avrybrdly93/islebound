@@ -374,11 +374,13 @@ describe('BL-059 criterion 1: 10,000 entities x 6 components, iteration <= 0.15 
     let seen = 0;
     for (let pass = 0; pass < REPEATS; pass += 1) {
       const result = queries.query(...defs);
-      for (let i = 0; i < result.length; i += 1) seen += result[i] === undefined ? 1 : 0;
+      // The sum is a sink: without consuming the handles, nothing stops the
+      // engine from eliminating the loop and timing an empty one.
+      for (const entity of result) seen += entity;
     }
     const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
 
-    assert.equal(seen, 0);
+    assert.ok(seen > 0, 'the timed loop must actually have consumed the handles');
     assert.equal(
       queries.misses,
       missesAfterWarm,
