@@ -4,23 +4,60 @@
 
 ---
 
-## Status: IDLE
+## Status: IN_PROGRESS
 
-No task in progress. **BL-058 is complete** — all three acceptance criteria are
-met. See `34_DEVELOPMENT_LOG.md` 2026-08-18 (BL-058) for the perturbation table
-and the three surprises.
+## Current task
 
-## Next action for an agent
+**BL-059** — ECS-lite part 3: cached queries by component signature
 
-The topmost unblocked task in Phase 0's Ready list, per
-`AI_DEVELOPMENT_WORKFLOW.md` §2. As of this session that is **BL-059**
-(ECS-lite part 3, cached queries by component signature, M, depends on BL-058
-which is now done).
+- **Phase:** 0
+- **Started:** 2026-08-22
+- **Branch:** working directly on `main` (this repo has no PR flow for agent runs)
+- **Docs read:** AI_DEVELOPMENT_WORKFLOW, 32, 33, 34 (last 3), 35, 04, 05, 06, 07
+- **Estimated size:** M
 
-**Read the file, do not trust this line.** `BL-056` still sits above it in
-Ready and is still Phase 1, so it is still not a candidate under the workflow's
-phase discipline — third session running. The three items this session filed
-(BL-060, BL-061, BL-062) sit *below* BL-059 and two of them depend on it.
+Selected per `AI_DEVELOPMENT_WORKFLOW.md` §2: the topmost unblocked task in
+Phase 0's Ready list. `BL-056` still sits above it and is still **Phase 1**, so
+it is still not a candidate under phase discipline — fourth session running.
+BL-059's dependency BL-058 is done.
+
+### Plan
+
+1. Add the invalidation signal BL-058's handoff note 5 says does not exist yet:
+   a monotonic `version` on `ComponentStore`, bumped exactly where
+   `sortedCache` is already invalidated (which is precisely "membership or
+   order may have changed", so the two cannot drift apart).
+2. Add the same on `EntityAllocator`, bumped on `destroy` only — a `create`
+   cannot change any query result, and the argument for that is testable.
+3. `sim/ecs/Query.ts`: `QueryCache` over an allocator + registry, with an
+   order-independent identity-based signature and version-keyed invalidation.
+4. Compute by driving from the smallest store's `entities()` and `has()` on the
+   rest, per handoff note 4.
+5. Tests: the three acceptance criteria, the traps, and a measured performance
+   case at 10,000 x 6.
+6. Docs: `34` entry, `40` if the caching decision is architecturally visible,
+   `32` and `33` handoff.
+
+### Progress
+
+- [ ] Step 1
+- [ ] Step 2
+- [ ] Step 3
+- [ ] Step 4
+- [ ] Step 5
+- [ ] Step 6
+
+### Decisions made during implementation
+
+*(filled in as they are made)*
+
+### Discovered work (added to backlog, NOT done in this task)
+
+*(filled in at handoff)*
+
+### Blockers
+
+- None
 
 ## Read this before writing a class with a constructor
 
