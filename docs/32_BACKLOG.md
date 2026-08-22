@@ -39,9 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-**BL-059** — ECS-lite part 3: cached queries by component signature. Claimed
-2026-08-22; see `33_CURRENT_TASK.md` for the plan and progress. Its entry stays
-in Ready below until it is moved to Done.
+*(nothing — pick the topmost unblocked task from Ready)*
 
 ---
 
@@ -56,14 +54,14 @@ in Ready below until it is moved to Done.
   - [ ] Whatever is decided is recorded in `40_DECISION_LOG.md`
 - **Notes:** Filed 2026-08-15 by BL-054 rather than fixed inline: it is a judgement about how the island looks, it needs the renderer to answer, and guessing now would either cost 9x for nothing or bake in an artefact. `12` §"Scatter" already softens the visual consequence with clumping, so it may well be invisible.
 
-### BL-059 — ECS-lite part 3: cached queries by component signature
+### BL-059 — ECS-lite part 3: cached queries by component signature — **DONE 2026-08-22**
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-058 · **Docs:** 04, 07
 - **Description:** `sim/ecs/Query.ts`: `World.query(...defs)` returning entities sorted ascending, computed lazily and cached per-tick by component-set signature (`04` §4.3), with cache invalidation on store mutation.
 - **Acceptance criteria:**
-  - [ ] 10,000 entities × 6 components: query iteration ≤ 0.15 ms
-  - [ ] Query results are in ascending entity order, always
-  - [ ] A component added or removed mid-tick is reflected, not served from a stale cache
-- **Notes:** Split out of BL-007 on 2026-08-18. This slice carries the performance criterion, because it is the only one of the three whose cost the criterion is actually about. **BL-008 and BL-014 named `BL-007` as a dependency when BL-007 meant all three slices; both now name BL-059**, which is the slice that completes what they were waiting for.
+  - [x] 10,000 entities × 6 components: query iteration ≤ 0.15 ms — measured **0.0784 ms** cached, 1.9x headroom. Note the criterion is about *iteration*: computing the intersection cold costs **1.00 ms median**, 14x the budget, which is why this task is "cached queries" and not "queries"
+  - [x] Query results are in ascending entity order, always — ascending **index**, inherited from the driving store's `entities()` with no re-sort; the ordering cases recycle an index first, so a raw-handle sort fails them
+  - [x] A component added or removed mid-tick is reflected, not served from a stale cache — invalidation is **version-keyed, not tick-keyed**; a per-tick cache satisfies `04` §4.3's wording and fails this criterion outright. See decision 0024
+- **Notes:** Split out of BL-007 on 2026-08-18; **done 2026-08-22**, see `34_DEVELOPMENT_LOG.md`. This slice carries the performance criterion, because it is the only one of the three whose cost the criterion is actually about. **BL-008 and BL-014 named `BL-007` as a dependency when BL-007 meant all three slices; both now name BL-059** — which is now done, so **both are unblocked**, as are BL-060 and BL-061. Landed alongside it: a `version` counter on `ComponentStore` and on `EntityAllocator`, which BL-058's handoff note 5 named as part of this task.
 
 ### BL-060 — `World.destroyEntity` must reach the component stores
 - **Phase:** 0 · **Size:** S · **Depends on:** BL-061 · **Docs:** 04
@@ -88,6 +86,14 @@ in Ready below until it is moved to Done.
   - [ ] Either the script names match the docs, or both docs mark the not-yet-built commands with the BL that will build them
   - [ ] `pnpm test` exists as an alias, or the docs stop naming it
 - **Notes:** Filed 2026-08-18 by BL-058, which hit all three. Deliberately *not* fixed inline — `35` §3 forbids expanding scope, and renaming a script is a change to every doc and CI file that names it.
+
+### BL-063 — `QueryCache` has no eviction
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-061 · **Docs:** 04
+- **Description:** `QueryCache` holds one entry per distinct component-set signature and never drops one. That is correct and bounded for the intended use — systems are a fixed list declared in `sim/systems/order.ts`, so the signature set is finite and small — but nothing enforces it. A system that built a signature from data (a query per structure type, per crop species) would grow the map for the lifetime of the session, and each entry holds an array as long as its result.
+- **Acceptance criteria:**
+  - [ ] Either an eviction policy exists (LRU on a cap, or drop-if-unqueried-for-N-ticks), or `World.query` is documented as accepting only statically-known signatures and something checks it
+  - [ ] Whichever is chosen, the *other* is named in a comment with why it was not
+- **Notes:** Filed 2026-08-22 by BL-059. Deliberately not fixed inline: an eviction policy is a guess without a caller that needs one, and `35` §3 forbids expanding scope. Depends on BL-061 because the answer may be "`World` owns the lifetime and clears on world teardown", which needs a `World`. **Not urgent** — nothing in the repository builds a dynamic signature today, and the entry-count is observable via `QueryCache.size` if anyone wants to check.
 
 ### BL-008 — Fixed-timestep game loop
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-059 · **Docs:** 04, 09

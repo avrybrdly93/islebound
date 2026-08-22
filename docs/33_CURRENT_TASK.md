@@ -4,60 +4,28 @@
 
 ---
 
-## Status: IN_PROGRESS
+## Status: IDLE
 
-## Current task
+No task in progress. **BL-059 is complete** — all three acceptance criteria are
+met, with the measured numbers in `32_BACKLOG.md` and the reasoning in
+`34_DEVELOPMENT_LOG.md` 2026-08-22 (BL-059).
 
-**BL-059** — ECS-lite part 3: cached queries by component signature
+**ECS-lite is finished.** The allocator (BL-007), the stores (BL-058) and the
+queries (BL-059) all exist, which means **BL-061 — assemble the `World` — is
+now unblocked, and so are BL-060, BL-008 and BL-014**, all of which have been
+waiting on the ECS through three sessions.
 
-- **Phase:** 0
-- **Started:** 2026-08-22
-- **Branch:** working directly on `main` (this repo has no PR flow for agent runs)
-- **Docs read:** AI_DEVELOPMENT_WORKFLOW, 32, 33, 34 (last 3), 35, 04, 05, 06, 07
-- **Estimated size:** M
+## Next action for an agent
 
-Selected per `AI_DEVELOPMENT_WORKFLOW.md` §2: the topmost unblocked task in
-Phase 0's Ready list. `BL-056` still sits above it and is still **Phase 1**, so
-it is still not a candidate under phase discipline — fourth session running.
-BL-059's dependency BL-058 is done.
+The topmost unblocked task in Phase 0's Ready list, per
+`AI_DEVELOPMENT_WORKFLOW.md` §2. As of this session that is **BL-061** (assemble
+the `World`, S, depends on BL-059 which is now done).
 
-### Plan
-
-1. Add the invalidation signal BL-058's handoff note 5 says does not exist yet:
-   a monotonic `version` on `ComponentStore`, bumped exactly where
-   `sortedCache` is already invalidated (which is precisely "membership or
-   order may have changed", so the two cannot drift apart).
-2. Add the same on `EntityAllocator`, bumped on `destroy` only — a `create`
-   cannot change any query result, and the argument for that is testable.
-3. `sim/ecs/Query.ts`: `QueryCache` over an allocator + registry, with an
-   order-independent identity-based signature and version-keyed invalidation.
-4. Compute by driving from the smallest store's `entities()` and `has()` on the
-   rest, per handoff note 4.
-5. Tests: the three acceptance criteria, the traps, and a measured performance
-   case at 10,000 x 6.
-6. Docs: `34` entry, `40` if the caching decision is architecturally visible,
-   `32` and `33` handoff.
-
-### Progress
-
-- [ ] Step 1
-- [ ] Step 2
-- [ ] Step 3
-- [ ] Step 4
-- [ ] Step 5
-- [ ] Step 6
-
-### Decisions made during implementation
-
-*(filled in as they are made)*
-
-### Discovered work (added to backlog, NOT done in this task)
-
-*(filled in at handoff)*
-
-### Blockers
-
-- None
+**Read the file, do not trust this line.** `BL-056` still sits above it in
+Ready and is still Phase 1, so it is still not a candidate under the workflow's
+phase discipline — fourth session running. `BL-060` sits between them and
+depends on BL-061, so it cannot go first. The item this session filed (BL-063)
+sits below and also depends on BL-061.
 
 ## Read this before writing a class with a constructor
 
@@ -71,62 +39,68 @@ constructor(private readonly allocator: EntityAllocator) {}   // typechecks, lin
 which refuses any syntax whose removal changes runtime behaviour:
 `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX: TypeScript parameter property is not
 supported in strip-only mode`. Declare the field and assign it in the
-constructor body instead. Nothing in `06`, `07` or `05` says so, and no module
-before `ComponentStore.ts` had a constructor with arguments — so this is the
-first time the repository has met it, and it will now meet it constantly.
+constructor body instead. Nothing in `06`, `07` or `05` says so.
 
-## What BL-058 leaves for BL-059
+*(BL-058 said this repository "will now meet it constantly". BL-059 wrote a
+two-argument constructor and did not meet it, because this note was here.
+Leave it here.)*
 
-1. **The store is `ComponentStore<T>` and the accessor is
-   `ComponentRegistry.store(def)`.** A query wants `registry.store(def)` per
-   def, then the intersection of their entity sets.
-2. **Iterate `store.entities()`, and do not re-sort its output.** It is already
-   ascending **by index** and already filtered to live entities. Re-sorting by
-   handle would undo both — see the log entry; the generation bits sit above
-   the index, so a numeric handle sort orders by generation first.
-3. **The cheapest intersection starts from the smallest store.** `store.size`
-   is O(1) and includes not-yet-pruned dead slots, so it is an upper bound
-   rather than an exact live count — fine for choosing which store to drive the
-   loop from, wrong as a result count.
-4. **BL-059's criterion is where the performance budget lives** — 10,000
-   entities × 6 components ≤ 0.15 ms. `entities()` sorts on first use after a
-   mutation and caches; a query that calls it once per component per tick is
-   already paying six sorts. Consider driving from the smallest store's
-   `entities()` and using `has()` (O(1)) on the rest.
-5. **Cache invalidation is the third criterion and it is not free.** The store
-   invalidates its *own* sorted view on mutation but tells nobody. A query
-   cache needs a signal — a per-store mutation counter is the smallest thing
-   that works, and it does not exist yet. Adding it is part of BL-059, not a
-   separate task.
-6. **`prune()` changes `size` but nothing observable.** A query cache keyed on
-   `size` would invalidate on a prune that changed no result. Key on a
-   mutation counter, not on size.
+## What BL-059 leaves for BL-061
 
-## What BL-007 leaves for BL-058 and BL-059
+1. **The three pieces and their owners.** `EntityAllocator` owns liveness and
+   handles; `ComponentRegistry.store(def)` owns the per-component stores;
+   `QueryCache.query(...defs)` owns intersections. `04` §4.3's `World` is the
+   assembly — `store` delegates to the registry, `createEntity`/`destroyEntity`
+   to the allocator, `query` to the cache. **Do not reimplement any of them**;
+   that is BL-061's first acceptance criterion.
 
-*(BL-058 is done; these six notes are kept because points 3–6 still apply to
-BL-059.)*
+2. **`QueryCache` takes `(allocator, registry)` and holds no tick.** It needs
+   neither, which is worth knowing before wiring: invalidation is version-keyed
+   rather than tick-keyed, so `World.tick` is not an input to it. See decision
+   0024 for why, and do not "restore" per-tick clearing — it would fail BL-059's
+   third criterion.
+
+3. **Two `version` counters now exist and carry a standing obligation.**
+   `ComponentStore.version` bumps on every membership- or order-changing
+   mutation; `EntityAllocator.version` bumps on `destroy`. Any *new* mutating
+   method on either must bump its counter or the query cache goes silently
+   stale. On the store the bump sits on the same lines as the existing
+   `sortedCache = undefined`, which is the mitigation — follow that pattern.
+
+4. **`EntityAllocator.create` deliberately does not bump.** The argument is
+   that a fresh entity is a member of no query until some store's `set` says
+   so, and a recycled index cannot inherit a component because the dense array
+   holds whole handles. If `World` ever gains a path that gives a new entity
+   components *without* going through a store's `set` — a save-load that
+   populates dense arrays directly is the plausible one — that claim breaks and
+   `create` must start bumping. Decision 0024 records this.
+
+5. **`World.step(dt)` and the system-order array are the real work in BL-061**,
+   not the delegation. `04` §4.3 wants the order to be data in
+   `sim/systems/order.ts`, and neither the file nor a system exists yet.
+
+6. **The performance criterion is met on the *cached* path.** 0.0784 ms for a
+   cached 10,000 x 6 query against a 0.15 ms budget; computing one cold costs
+   1.00 ms median. So a `World.step` that invalidates every query every tick
+   (by destroying and creating entities freely, say) puts the cold path back in
+   the frame budget. Nothing needs doing about that today — it is a thing to
+   notice when the first real systems land.
+
+## What BL-007 and BL-058 left, still current
 
 1. **The handle is one unsigned 32-bit number**: `indexOf(e)` gives the low 20
-   bits, `generationOf(e)` the high 12. A component store should key on
-   **`indexOf(e)`** — which `ComponentStore`'s *sparse* half does; its dense
+   bits, `generationOf(e)` the high 12. Store keys are `indexOf(e)`; the dense
    half stores the whole handle so a recycled index cannot inherit.
-2. **`isLive(e)` is the staleness check**, and BL-058's third criterion was
-   exactly a call to it. The allocator remains the single owner of that
-   judgement.
-3. **Ascending iteration is by index, and `liveEntities()` is O(capacity)**, a
-   scan of the index range. That is deliberate and it is *not* where the
-   performance criterion lives — BL-059's cached queries carry the 10,000 × 6
-   ≤ 0.15 ms budget, and a query must not be built by filtering
-   `liveEntities()` per call if that budget is to be met.
-4. **`retiredCount` climbs under heavy churn and that is normal**, not a leak:
-   an index whose 4,095 generations are spent is withdrawn rather than wrapped.
-   Only `create()` throws, and only when the index space itself is gone.
-5. **`NULL_ENTITY` is `0` and is never live.** Safe as an "absent" value in a
-   component field, which is why generations start at 1.
-6. **There is still no `World` class.** BL-007's handoff asked whether the
-   assembly deserves its own item; BL-058 decided it does and filed **BL-061**.
-   BL-060 (destroy must reach the stores) depends on it.
+2. **"Ascending entity order" means ascending *index*, not ascending handle.**
+   The generation sits in the high bits, so a numeric handle sort orders by
+   generation first, and it agrees with the right answer until the first index
+   is recycled. Test with a recycle or the test grades nothing.
+3. **`isLive(e)` is the staleness check** and the allocator is its single
+   owner. Nothing re-derives it from generation bits.
+4. **`retiredCount` climbing under churn is normal**, not a leak.
+5. **`NULL_ENTITY` is `0` and is never live.**
+6. **Destroying an entity still does not reach the stores.** `ComponentStore.prune()`
+   is the interim answer; wiring it into `World.destroyEntity` is BL-060.
 
 ## Template — copy this block when starting a task
 
@@ -191,6 +165,8 @@ Blockers requiring human input include: any change to `04_TECHNICAL_ARCHITECTURE
 
 | Task | Completed | PR | Notes |
 |---|---|---|---|
+| BL-059 | 2026-08-22 | — | ECS-lite part 3 — cached queries, version-keyed invalidation (decision 0024), 0.0784 ms cached against a 0.15 ms budget; landed the two `version` counters BL-058 asked for; filed BL-063 |
+| BL-058 | 2026-08-18 | — | ECS-lite part 2 — sparse-set component stores and `ComponentRegistry.store(def)`; filed BL-060/061/062 |
 | BL-050 | 2026-08-13 | — | Replaced the allocation instrument with a call-site-attributed one (`HeapProfiler.startSampling`); closed BL-004's last criterion; 0 `todo` remaining; filed BL-053 |
 | BL-004 | 2026-08-13 | — | Core math module — all three criteria met; see above |
 | BL-003 | 2026-08-09 | — | Canvas + dpr-aware drawing buffer, React overlay (`pointer-events: none`), HMR teardown; verified against headless Chromium at dpr 1/2/3; filed BL-048/049 |

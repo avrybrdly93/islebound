@@ -34,6 +34,142 @@ What was added, and what it protects.
 
 ---
 
+## 2026-08-22 — BL-059 ECS-lite part 3: cached queries by component signature
+
+**Type:** feat
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~2h
+
+### What changed
+
+`sim/ecs/Query.ts`: `QueryCache`, the `query(...defs)` of `04` §4.3 — every
+live entity holding all of the named components, ascending, computed lazily and
+cached by component-set signature. Plus the invalidation signal BL-058's
+handoff note 5 said did not exist: a `version` counter on `ComponentStore` and
+one on `EntityAllocator`. 20 new cases; the suite goes 285 → 305.
+
+ECS-lite is now complete in its three pieces — allocator (BL-007), stores
+(BL-058), queries (BL-059) — and **BL-061 can assemble the `World`**, which is
+the item BL-008 and BL-014 have been waiting on through all three.
+
+### Why it was done this way
+
+**Invalidation is version-keyed, not tick-keyed, and the two are not the same
+requirement.** `04` §4.3 asked for "cached per-tick"; this task's third
+criterion asked for a mid-tick add or remove to be reflected. A cache cleared
+on the tick boundary satisfies the first and *fails the second outright* —
+inside a tick it is exactly the stale cache the criterion forbids, and `04`
+§4.4's intent-in/event-out shape makes mid-tick churn the normal case (a
+`gather` intent removes a `ResourceNode` in the same tick a later system
+queries for it). Version-keying is strictly fresher — it can never serve
+something a per-tick cache would not have — and also *cheaper*, because a cache
+nothing invalidated survives across ticks instead of being discarded 30 times a
+second. `04` §4.3 is amended rather than left reading as contradicted;
+decision 0024 carries the alternatives.
+
+**The store's counter is bumped on exactly the lines that already cleared
+`sortedCache`.** "The sorted view is stale" and "a query over this store may
+have a different answer" are the same condition — membership or order changed —
+and putting them on the same lines is the only thing that stops the two from
+drifting apart as the class grows. It also gets the subtle case right for free:
+a `set` that only replaces a *value* changes neither, so it does not bump, and
+the cache is not invalidated by the most common mutation in the game.
+
+**The allocator needed its own, and `create` deliberately does not bump it.**
+An entity can be destroyed without any store being touched — every store's
+version is unchanged, `entities()` silently stops yielding the handle, and a
+cache keyed only on store versions keeps serving a dead entity. `liveCount`
+will not substitute: one create and one destroy in a tick leaves it where it
+started while the live set has changed. `create` is absent because a fresh
+entity has a component in no store and a recycled index cannot inherit one (the
+dense array holds whole handles), so it is a member of no query until some
+store's `set` says so. That is a claim, it has its own test, and decision 0024
+records the change that would break it.
+
+**Cold results drive from the smallest store** and `has()` on the rest, per
+BL-058's handoff note 4, so the cost is `min(size) × defs` and the answer
+arrives already ascending with no sort or merge. Measured: a 1-of-10,000
+six-component intersection costs **0.0436 ms** driven from the one-entity
+store against **1.502 ms** driven from the first-named one — **34×**, on the
+same six stores.
+
+### Surprises
+
+**The performance criterion is about the cached path, and the cold path is 14×
+over it.** "10,000 entities × 6 components: query iteration ≤ 0.15 ms" reads
+like a bound on computing the intersection. It is not one that is reachable:
+computing it costs **1.00 ms median** (max 5.5 ms on the first, un-JITed run),
+because 10,000 entities × 5 `has()` calls is 50,000 property lookups and 0.15 ms
+would be 3 ns each. Iterating the *cached* result costs **0.0784 ms**, inside
+the budget with 1.9× headroom. So the criterion is met on the quantity it
+names, and the cache is the reason rather than an optimisation on top —
+which is also why the task is called "cached queries" rather than "queries".
+Both numbers are asserted: the budget on the cached path, and a deliberately
+loose 50 ms ceiling on the cold one, because "the cached path is fast" says
+nothing if one mutation costs 100 ms to recover from. The 50 ms is this
+session's own ceiling and not a budget from any doc; it is written down as such
+in the test.
+
+**A benchmark can pass for two different wrong reasons here, and both are
+cheap to exclude.** A timed loop that silently recomputed would be reporting
+the cold path; one whose query matched nothing would be timing an empty loop.
+The case asserts `result.length === 10_000` and that `queries.misses` did not
+move across the timed passes, before it looks at the clock. `hits`/`misses`
+exist on the cache for that reason and no other.
+
+**`prefer-for-of` and `no-unnecessary-condition` disagreed with each other over
+the timing loop's sink.** The index loop was rejected by the first; switching to
+`for-of` made the `=== undefined` guard unnecessary, because `for-of` over a
+`readonly EntityId[]` yields `EntityId`, not `EntityId | undefined` — the
+opposite of what `noUncheckedIndexedAccess` does to `result[i]`. Summing the
+handles satisfies both and is a better sink anyway.
+
+**No new instance of the parameter-property trap.** BL-058's handoff warned it
+"will now meet it constantly"; `QueryCache`'s constructor takes two arguments
+and declares both fields explicitly, following `ComponentStore`'s comment. The
+warning worked, which is the point of a handoff note.
+
+### Tests
+
+`Query.test.ts`, 20 cases in four groups: the intersection surface, criterion 2
+(ordering), criterion 3 (mid-tick freshness), criterion 1 (performance).
+
+The ordering cases **recycle an index before checking**, so `(index 0, gen 2)`
+is the larger handle and the smaller index and a raw-handle sort disagrees with
+the right answer — the same trap BL-058's ordering criterion had. The mid-tick
+cases never advance anything resembling a tick; they mutate and re-query
+immediately, since a per-tick cache would pass anything else. Two cases pin the
+claims the counters rest on rather than the counters themselves: a value-only
+`set` must not force a recompute, and creating an entity with no components must
+not either.
+
+**Seven perturbations applied, run and reverted**, each failing exactly the
+cases it should and none failing the suite indiscriminately:
+
+| perturbation | cases failing |
+|---|---|
+| cache ignores the allocator's version | 2 (destroyed entity, recycled index) |
+| cache ignores store versions | 4 (add, remove, per-signature, empty store) |
+| result re-sorted by raw handle | 1 (ascending after a recycle) |
+| signature not sorted | 1 (def order irrelevant) |
+| a value-only `set` bumps the version | 1 (no recompute on a value write) |
+| allocator stops counting destructions | 2 (same as the first row) |
+| smallest-store driving removed | 1 (1-of-10,000 timing) |
+
+### Follow-ups
+
+- BL-063 filed: `QueryCache` has no way to drop an entry, so a system that
+  builds a signature from data grows the map without bound.
+- BL-061 is now unblocked and is the next task; BL-060 depends on it.
+
+### Verification
+
+`pnpm lint` clean, `pnpm typecheck` clean, `pnpm test:node` **305/305**,
+`pnpm build` ✓. `pnpm sim --ticks 20000 --assert-hash` and `pnpm check:bundle`
+**do not exist** — that is BL-062, filed by the previous session, and it is
+still the accurate description of the verify block.
+
 ## 2026-08-18 — BL-058 ECS-lite part 2: sparse-set component stores
 
 **Type:** feat
