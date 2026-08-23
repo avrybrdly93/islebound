@@ -80,9 +80,11 @@ this rather than made here.
    `World.step` "helpfully" defer `emit`.
 
 6. **The suite is 328 pass / 0 fail on a good run, and 327/1 on a bad one.**
-   The one is always BL-059's query-budget assertion. See BL-064; it is
-   pre-existing at the same 2-in-6 rate on a clean tree, measured before this
-   session continued.
+   The one is always BL-059's query-budget assertion. See BL-064. It is
+   pre-existing and it is **frequent**: measured over two 8-run blocks on this
+   container, **5 failures in 8 on pre-session `main`** against 2 in 8 with
+   this session's changes. Expect to see it; do not spend the time proving it
+   is not yours, and do not loosen it.
 
 ## What BL-059 left, still current
 

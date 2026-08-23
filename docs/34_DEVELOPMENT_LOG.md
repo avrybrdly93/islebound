@@ -127,9 +127,10 @@ delete even that, and is filed as BL-065 rather than done here.
 **BL-059's 0.15 ms query-budget assertion is flaky under full-suite load, and
 it is not this task's doing.** It failed during verification, so it was
 measured before being explained: alone it passes 5/5; inside `pnpm test:node`,
-where 87 suites share four cores, it fails at ~0.17–0.18 ms in **2 of 6 runs on
-a clean tree** and **2 of 6 with these changes present**. Same rate, so the
-cause is the harness. Filed as BL-064, not loosened and not skipped — the
+where 87 suites share four cores, it fails at ~0.17–0.18 ms in **5 of 8 runs on
+pre-session `main` (`5b4cc15`)** against **2 of 8 with these changes present**.
+So the cause is the harness, and the 23 cases added here — which add parallel
+load, and were the obvious suspect — did not raise it. Filed as BL-064, not loosened and not skipped — the
 0.15 ms figure is a real contract from `04` §2, and the problem is that a
 wall-clock sample taken while N processes compete is not a measurement of the
 thing the contract is about. Decision 0023 already established the pattern it
