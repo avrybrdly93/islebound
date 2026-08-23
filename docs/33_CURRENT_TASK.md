@@ -4,28 +4,60 @@
 
 ---
 
-## Status: IDLE
+## Status: IN_PROGRESS
 
-No task in progress. **BL-059 is complete** — all three acceptance criteria are
-met, with the measured numbers in `32_BACKLOG.md` and the reasoning in
-`34_DEVELOPMENT_LOG.md` 2026-08-22 (BL-059).
+## Current task
+**BL-061** — Assemble the `World` class
+- **Phase:** 0
+- **Started:** 2026-08-23
+- **Branch:** working directly on the repo's session branch (this repository has no PR flow for these runs)
+- **Docs read:** AI_DEVELOPMENT_WORKFLOW, 32, 33, 34 (last 3), 35, 04, 05, 06, 07
+- **Estimated size:** S
 
-**ECS-lite is finished.** The allocator (BL-007), the stores (BL-058) and the
-queries (BL-059) all exist, which means **BL-061 — assemble the `World` — is
-now unblocked, and so are BL-060, BL-008 and BL-014**, all of which have been
-waiting on the ECS through three sessions.
+Selected as the topmost unblocked Phase 0 task, per `AI_DEVELOPMENT_WORKFLOW.md`
+§2. `BL-056` still sits above it in Ready and is still **Phase 1**, so it is
+still not a candidate under phase discipline — fifth session running. `BL-060`
+and `BL-063` both depend on this task, so neither can go first.
 
-## Next action for an agent
+### Plan
+1. `sim/systems/order.ts` — the `System` type and `SYSTEM_ORDER`, the
+   authoritative execution order as **data**. It is empty today, because no
+   system exists; the file and its shape are what BL-061's second acceptance
+   criterion is about, and an empty array is the honest content.
+2. `sim/World.ts` — assemble. `store`/`has` delegate to `ComponentRegistry`,
+   `createEntity`/`destroyEntity`/`isLive` to `EntityAllocator`, `query` to
+   `QueryCache`, `events` is an `EventBus`. **No second implementation of
+   anything**, which is criterion 1.
+3. `step(dt)` — increment `tick`, run `SYSTEM_ORDER` in order, drain the event
+   bus at one defined point. Decide and record where the drain sits.
+4. Tests: delegation is real (identity, not equivalence), the order is honoured
+   and is data, `step` advances the tick, purity holds.
+5. Docs: `34` entry with Surprises, `40` if anything is architecturally
+   significant, `32` → Done, `33` → IDLE.
 
-The topmost unblocked task in Phase 0's Ready list, per
-`AI_DEVELOPMENT_WORKFLOW.md` §2. As of this session that is **BL-061** (assemble
-the `World`, S, depends on BL-059 which is now done).
+### Progress
+- [ ] Step 1
+- [ ] Step 2
+- [ ] Step 3
+- [ ] Step 4
+- [ ] Step 5
 
-**Read the file, do not trust this line.** `BL-056` still sits above it in
-Ready and is still Phase 1, so it is still not a candidate under the workflow's
-phase discipline — fourth session running. `BL-060` sits between them and
-depends on BL-061, so it cannot go first. The item this session filed (BL-063)
-sits below and also depends on BL-061.
+### Decisions to make during implementation
+- Where `events.drain()` sits relative to the systems. `04` §4.4 says the bus
+  is drained "at one defined point per tick" and that the loop's owner decides;
+  `World.step` is now that owner.
+- Whether `destroyEntity` fans out to the stores. **It must not** — that is
+  BL-060, a separate item that depends on this one, and doing it here is the
+  scope expansion `35` §3 forbids.
+
+### Discovered work (added to backlog, NOT done in this task)
+- *(to fill in)*
+
+### Blockers
+- None
+
+### Notes for the next session
+- *(to fill in)*
 
 ## Read this before writing a class with a constructor
 
