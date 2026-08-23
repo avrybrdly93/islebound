@@ -4,60 +4,113 @@
 
 ---
 
-## Status: IN_PROGRESS
+## Status: IDLE
 
-## Current task
-**BL-061** — Assemble the `World` class
-- **Phase:** 0
-- **Started:** 2026-08-23
-- **Branch:** working directly on the repo's session branch (this repository has no PR flow for these runs)
-- **Docs read:** AI_DEVELOPMENT_WORKFLOW, 32, 33, 34 (last 3), 35, 04, 05, 06, 07
-- **Estimated size:** S
+No task in progress. **BL-061 is complete** — both acceptance criteria met, with
+the reasoning in `34_DEVELOPMENT_LOG.md` 2026-08-23 (BL-061) and the decision in
+`40_DECISION_LOG.md` 0025.
 
-Selected as the topmost unblocked Phase 0 task, per `AI_DEVELOPMENT_WORKFLOW.md`
-§2. `BL-056` still sits above it in Ready and is still **Phase 1**, so it is
-still not a candidate under phase discipline — fifth session running. `BL-060`
-and `BL-063` both depend on this task, so neither can go first.
+**There is a tick now.** `World.step(dt)` advances the tick, runs
+`SYSTEM_ORDER`, and drains the deferred event queue. `SYSTEM_ORDER` is empty,
+so a step is currently a no-op with a clock — which is exactly what the next
+few items fill in.
 
-### Plan
-1. `sim/systems/order.ts` — the `System` type and `SYSTEM_ORDER`, the
-   authoritative execution order as **data**. It is empty today, because no
-   system exists; the file and its shape are what BL-061's second acceptance
-   criterion is about, and an empty array is the honest content.
-2. `sim/World.ts` — assemble. `store`/`has` delegate to `ComponentRegistry`,
-   `createEntity`/`destroyEntity`/`isLive` to `EntityAllocator`, `query` to
-   `QueryCache`, `events` is an `EventBus`. **No second implementation of
-   anything**, which is criterion 1.
-3. `step(dt)` — increment `tick`, run `SYSTEM_ORDER` in order, drain the event
-   bus at one defined point. Decide and record where the drain sits.
-4. Tests: delegation is real (identity, not equivalence), the order is honoured
-   and is data, `step` advances the tick, purity holds.
-5. Docs: `34` entry with Surprises, `40` if anything is architecturally
-   significant, `32` → Done, `33` → IDLE.
+**Three items were unblocked or filed by this session**: `BL-060` and `BL-063`
+were waiting only on a `World` to exist and now are not; `BL-064` and `BL-065`
+are new.
 
-### Progress
-- [ ] Step 1
-- [ ] Step 2
-- [ ] Step 3
-- [ ] Step 4
-- [ ] Step 5
+## Next action for an agent
 
-### Decisions to make during implementation
-- Where `events.drain()` sits relative to the systems. `04` §4.4 says the bus
-  is drained "at one defined point per tick" and that the loop's owner decides;
-  `World.step` is now that owner.
-- Whether `destroyEntity` fans out to the stores. **It must not** — that is
-  BL-060, a separate item that depends on this one, and doing it here is the
-  scope expansion `35` §3 forbids.
+The topmost unblocked task in Phase 0's Ready list, per
+`AI_DEVELOPMENT_WORKFLOW.md` §2. As of this session that is **BL-060**
+(`World.destroyEntity` must reach the component stores, S).
 
-### Discovered work (added to backlog, NOT done in this task)
-- *(to fill in)*
+**Read the file, do not trust this line.** `BL-056` still sits above it in
+Ready and is still Phase 1, so it is still not a candidate under the workflow's
+phase discipline — fifth session running.
 
-### Blockers
-- None
+**But read `BL-064` first and decide whether it outranks the list.** The
+workflow's "when things go wrong" table says a red CI on `main` is the top task
+regardless of the backlog. This is not quite that — the flake is pre-existing,
+it is not caused by any change, and `main` is green on a good run — but a suite
+that fails 2 runs in 6 will make every future session's verify step ambiguous,
+and the next agent to hit it will spend the time this one already spent proving
+it is not theirs. That is a judgement call, deliberately left to whoever reads
+this rather than made here.
 
-### Notes for the next session
-- *(to fill in)*
+## What BL-061 leaves for the next session
+
+1. **The order is a constructor argument, not an import, and that is decision
+   0025 rather than a preference.** `EventBus<M>` is invariant in `M`, so
+   `World<M>` is assignable to `World<M2>` for no other `M2` at all — a system
+   list and its world must name the *same* event map. Do not "tidy" `World` by
+   making it import `SYSTEM_ORDER`; it does not typecheck, and the three
+   obvious workarounds were each tried and each produced a real error (see the
+   log entry). **When `sim/events/` lands, `SYSTEM_ORDER`'s annotation is the
+   single place the event map is named** — change `Record<never, never>` there
+   and every `World` built from it follows by inference.
+
+2. **`World.destroyEntity` deliberately stops at the allocator, and a test says
+   so by name.** `World.test.ts` → `destroyEntity does NOT reach the stores —
+   that is BL-060`. When BL-060 lands, **that case is the one to change**, and
+   its failure is the reminder to update `World`'s module comment ("What this
+   deliberately does not do") in the same commit. Note `World` holds the
+   registry privately and exposes no way to enumerate every store, so BL-060
+   has to decide whether it needs one — a `ComponentRegistry.stores()` iterator
+   is the obvious shape and does not exist yet.
+
+3. **`World.query` takes `ComponentDef<unknown>`; `QueryCache.query` takes
+   `ComponentDef<never>`.** That is not an inconsistency to normalise blindly:
+   the cache's parameter is the *bottom* of the family, which nothing but
+   itself is assignable to, so every direct caller has to cast — which is why
+   `Query.test.ts` carries an `anyDef<T>` helper. `World.query` uses the *top*,
+   which is the correct position for something that never reads a def's value
+   type, and carries one erasing cast so no system needs one. BL-065 deletes
+   even that; do it there, not inline.
+
+4. **`step` does not roll the tick back when a system throws.** The world
+   really did partially advance, and a `tick` that disagreed with the state
+   would be worse than one that is honest about it. The queue is *not* drained
+   in that case, which is the half a caller can rely on.
+
+5. **`emit` is synchronous and `enqueue` waits for the tick boundary**, and a
+   test pins the distinction through `World` rather than only through
+   `EventBus`. A system that needs another system to see something *this* tick
+   emits; one telling the outside world what happened enqueues. Do not make
+   `World.step` "helpfully" defer `emit`.
+
+6. **The suite is 328 pass / 0 fail on a good run, and 327/1 on a bad one.**
+   The one is always BL-059's query-budget assertion. See BL-064; it is
+   pre-existing at the same 2-in-6 rate on a clean tree, measured before this
+   session continued.
+
+## What BL-059 left, still current
+
+1. **`QueryCache` holds no tick.** Invalidation is version-keyed, not
+   tick-keyed, so `World.tick` is not an input to it. `World.step` does **not**
+   clear the cache, and must not — that would fail BL-059's third criterion.
+   Decision 0024.
+
+2. **Two `version` counters carry a standing obligation.**
+   `ComponentStore.version` bumps on every membership- or order-changing
+   mutation; `EntityAllocator.version` bumps on `destroy`. Any *new* mutating
+   method on either must bump its counter or the query cache goes silently
+   stale. On the store the bump sits on the same lines as the existing
+   `sortedCache = undefined`, which is the mitigation — follow that pattern.
+
+3. **`EntityAllocator.create` deliberately does not bump.** A fresh entity is a
+   member of no query until some store's `set` says so, and a recycled index
+   cannot inherit a component because the dense array holds whole handles. If
+   `World` ever gains a path that gives a new entity components *without* going
+   through a store's `set` — a save-load that populates dense arrays directly
+   is the plausible one — that claim breaks and `create` must start bumping.
+   Decision 0024 records this.
+
+4. **The query performance criterion is met on the *cached* path.** 0.0784 ms
+   for a cached 10,000 x 6 query against a 0.15 ms budget; computing one cold
+   costs 1.00 ms median. So a `step` whose systems destroy and create entities
+   freely puts the cold path back in the frame budget — a thing to notice when
+   the first real systems land, not something to act on today.
 
 ## Read this before writing a class with a constructor
 

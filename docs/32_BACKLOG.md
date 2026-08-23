@@ -64,20 +64,12 @@ Current phase: **Phase 0 — Foundation**
 - **Notes:** Split out of BL-007 on 2026-08-18; **done 2026-08-22**, see `34_DEVELOPMENT_LOG.md`. This slice carries the performance criterion, because it is the only one of the three whose cost the criterion is actually about. **BL-008 and BL-014 named `BL-007` as a dependency when BL-007 meant all three slices; both now name BL-059** — which is now done, so **both are unblocked**, as are BL-060 and BL-061. Landed alongside it: a `version` counter on `ComponentStore` and on `EntityAllocator`, which BL-058's handoff note 5 named as part of this task.
 
 ### BL-060 — `World.destroyEntity` must reach the component stores
-- **Phase:** 0 · **Size:** S · **Depends on:** BL-061 · **Docs:** 04
+- **Phase:** 0 · **Size:** S · **Depends on:** — (**unblocked 2026-08-23**; BL-061 is done) · **Docs:** 04
 - **Description:** Destroying an entity currently leaves its components in every store. Nothing reads them — `has`, `get` and `entities` all skip non-live handles — but the slots are memory, reclaimed only when the index is reused or `ComponentStore.prune()` is called by hand. `World.destroyEntity` should fan the destruction out (per-store `remove`, or a `prune` sweep on a cadence — decide which, and say why).
 - **Acceptance criteria:**
   - [ ] After `destroyEntity(e)`, no store holds a slot for `e`
   - [ ] The cost is stated: per-store `remove` is O(stores) per destroy; a deferred sweep is O(size) per sweep. Whichever is chosen, the other is named in a comment
-- **Notes:** Filed 2026-08-18 by BL-058, which built `prune()` as the interim answer rather than leaving the store with a leak it had no way to address. Depends on BL-061 because there is no `World` to put this in yet.
-
-### BL-061 — Assemble the `World` class
-- **Phase:** 0 · **Size:** S · **Depends on:** BL-059 · **Docs:** 04, 05
-- **Description:** `04` §4.3 sketches `World` as holding `tick`, `createEntity`/`destroyEntity`, `store(def)`, `query(...defs)`, `events` and `step(dt)`. Every piece now exists separately — `EntityAllocator` (BL-007), `ComponentRegistry` (BL-058), queries (BL-059), `EventBus` (BL-006). This is the assembly, delegating rather than reimplementing.
-- **Acceptance criteria:**
-  - [ ] `World.store(def)` delegates to `ComponentRegistry`, `createEntity`/`destroyEntity` to `EntityAllocator` — no second implementation of either
-  - [ ] `step(dt)` runs systems in the order `sim/systems/order.ts` declares (`04` §4.3), and that order is data, not code
-- **Notes:** Filed 2026-08-18 by BL-058. BL-007's handoff note 6 asked whether the assembly deserves its own item; it does — `step` and the system-order array are real work that belongs to neither BL-058 nor BL-059.
+- **Notes:** Filed 2026-08-18 by BL-058, which built `prune()` as the interim answer rather than leaving the store with a leak it had no way to address. **Unblocked 2026-08-23** — `World.destroyEntity` now exists and delegates to the allocator and stops. `World.test.ts` carries a case asserting exactly that (`destroyEntity does NOT reach the stores — that is BL-060`), so **that case is the one to change when this lands**, and its failure is the reminder to update `World`'s module comment with it. Note `World` holds the registry privately and exposes no way to enumerate every store, so this task decides whether the fan-out needs one — a `ComponentRegistry.stores()` iterator is the obvious shape and does not exist.
 
 ### BL-062 — The verify block names three commands that do not exist
 - **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
@@ -88,12 +80,30 @@ Current phase: **Phase 0 — Foundation**
 - **Notes:** Filed 2026-08-18 by BL-058, which hit all three. Deliberately *not* fixed inline — `35` §3 forbids expanding scope, and renaming a script is a change to every doc and CI file that names it.
 
 ### BL-063 — `QueryCache` has no eviction
-- **Phase:** 0 · **Size:** S · **Depends on:** BL-061 · **Docs:** 04
+- **Phase:** 0 · **Size:** S · **Depends on:** — (**unblocked 2026-08-23**; BL-061 is done) · **Docs:** 04
 - **Description:** `QueryCache` holds one entry per distinct component-set signature and never drops one. That is correct and bounded for the intended use — systems are a fixed list declared in `sim/systems/order.ts`, so the signature set is finite and small — but nothing enforces it. A system that built a signature from data (a query per structure type, per crop species) would grow the map for the lifetime of the session, and each entry holds an array as long as its result.
 - **Acceptance criteria:**
   - [ ] Either an eviction policy exists (LRU on a cap, or drop-if-unqueried-for-N-ticks), or `World.query` is documented as accepting only statically-known signatures and something checks it
   - [ ] Whichever is chosen, the *other* is named in a comment with why it was not
-- **Notes:** Filed 2026-08-22 by BL-059. Deliberately not fixed inline: an eviction policy is a guess without a caller that needs one, and `35` §3 forbids expanding scope. Depends on BL-061 because the answer may be "`World` owns the lifetime and clears on world teardown", which needs a `World`. **Not urgent** — nothing in the repository builds a dynamic signature today, and the entry-count is observable via `QueryCache.size` if anyone wants to check.
+- **Notes:** Filed 2026-08-22 by BL-059. Deliberately not fixed inline: an eviction policy is a guess without a caller that needs one, and `35` §3 forbids expanding scope. Depends on BL-061 because the answer may be "`World` owns the lifetime and clears on world teardown", which needs a `World`. **Not urgent** — nothing in the repository builds a dynamic signature today, and the entry-count is observable via `QueryCache.size` if anyone wants to check, now also via `World.queryStats.size`. **Unblocked 2026-08-23**: `World` exists, and it does own the cache's lifetime — one `QueryCache` per `World`, constructed with it and unreachable from outside — so "the world owns it and it dies with the world" is now an available answer rather than a hypothesis.
+
+### BL-064 — BL-059's query-budget assertion is flaky under full-suite load
+- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** 29
+- **Description:** `Query.test.ts`'s `iterates a cached 6-component query over 10,000 entities within budget` asserts a wall-clock figure against BL-059's 0.15 ms criterion. Run alone it passes every time (5/5, measured). Run inside `pnpm test:node`, where `node --test` runs 87 suites across worker processes on a shared container, it fails intermittently at around **0.17-0.18 ms** — measured **2 failures in 6 full-suite runs on a clean tree**, and the same 2-in-6 with BL-061's changes present, so the rate is a property of the harness rather than of any change.
+- **Acceptance criteria:**
+  - [ ] The full suite passes repeatedly (≥ 6 consecutive runs) on a loaded container
+  - [ ] **The 0.15 ms budget itself is not raised**, and the assertion is not skipped or deleted. The criterion is a real performance contract from `04` §2 and BL-059; the problem is that a wall-clock measurement taken while N other processes compete for 4 cores is not a measurement of the thing the contract is about
+  - [ ] Whatever is chosen — isolating the timed suite, taking a best-of-N rather than a single sample, measuring against an in-process control the way decision 0023 does for allocation — the rejected options are named in a comment
+- **Notes:** Filed 2026-08-23 by BL-061, which hit it and confirmed it pre-existing before continuing. **Do not "fix" this by loosening the number.** Decision 0023 already established the pattern this probably wants: derive the threshold from a control measured in the same process and run, so it moves with the machine instead of being a constant that is right on one box. The cheapest partial fix is a best-of-N sample, since the failing runs are ~15% over a budget the isolated runs clear by ~2x.
+
+### BL-065 — `QueryCache.query` takes the bottom of the def family, so every direct caller casts
+- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** 04
+- **Description:** `QueryCache.query(...defs: readonly AnyComponentDef[])` where `AnyComponentDef = ComponentDef<never>` — the *bottom* of the family, which nothing but itself is assignable to under `exactOptionalPropertyTypes`. So a caller holding a `ComponentDef<Vec>` must cast; `Query.test.ts` carries an `anyDef<T>` helper for exactly this, and `World.query` carries one erasing cast for the same reason. A query never reads a def's value type, so `ComponentDef<unknown>` — the top — is the correct parameter and every caller loses its cast.
+- **Acceptance criteria:**
+  - [ ] `QueryCache.query` accepts any `ComponentDef<T>` with no cast at the call site
+  - [ ] `World.query`'s cast and `Query.test.ts`'s `anyDef<T>` helper are both deleted
+  - [ ] `AnyComponentDef` is either re-pointed or removed; if it stays, its doc says which position it is for
+- **Notes:** Filed 2026-08-23 by BL-061, which chose `ComponentDef<unknown>` for `World.query`'s own signature and left `QueryCache`'s alone — changing another module's public signature is the scope expansion `35` §3 forbids. Purely ergonomic; nothing is wrong today, and the one cast is erasure rather than a widening.
 
 ### BL-008 — Fixed-timestep game loop
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-059 · **Docs:** 04, 09
@@ -407,6 +417,15 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-061 — Assemble the `World` class
+- **Completed:** 2026-08-23 · **PR:** — (pushed direct to `main`)
+- `sim/World.ts` and `sim/systems/order.ts`. 23 tests; suite **328 pass / 0 fail / 0 todo**, was 305. Both acceptance criteria met. **Criterion 1 cannot be tested by behaviour** — a `World` that reimplemented the allocator would behave identically, because the reimplementation would be a copy of the same algorithm — so the cases assert **identity**: the store returned is the registry's own object, the query result is the cache's own frozen array, and `queryStats.hits` moves on the second call. **Criterion 2's cases run the same three systems in two different orders inside one test**, so a `step` that sorted, reversed or ignored the array fails. `SYSTEM_ORDER` is frozen and **empty**, which is the honest content while no system exists; thirteen no-op stubs is the scope expansion `35` §3 forbids, and the deliverable is the shape.
+- **Two decisions in `step`.** The tick increments **first**, so a system reading `world.tick` sees the tick it is executing. The deferred queue drains **after every system** — `04` §4.4 leaves that point to "the loop's owner" and `World.step` is now that owner; events are for presentation, which draws the end-of-tick state, and Phase 7 replaces this choke point with a per-tick network batch. A throwing system aborts the tick **without draining**, naming itself and keeping the original as `cause`, because a half-run tick has produced a state no system order would produce. The tick is not rolled back: the world really did partially advance.
+- **Surprise, and it is decision 0025.** `EventBus<M>` is **invariant in `M`** — it holds a `Map<keyof M, Slot[]>` and an `on` whose handler takes `M[K]` — so `World<M>` is assignable to `World<M2>` for **no other `M2` at all**, not the empty map and not the widest one. A `System<M>` names `World<M>` in parameter position, so a system list and its world must name the *same* event map: there is no one `SYSTEM_ORDER` that serves every `World<M>`. The order is therefore a **constructor argument rather than an import**, which is the better shape independently — no module-level global reached for from inside a class, and a test can run recording systems without touching the authoritative array. Three alternatives were tried against the typechecker rather than reasoned about, and all three produced real errors: a cast at the default parameter (sound only while the array is empty), dropping the type parameter (`keyof object` is `never`, so `emit` accepts nothing), and inventing the event map here.
+- **Second surprise:** `QueryCache.query` takes `ComponentDef<never>`, the *bottom* of the def family, so every direct caller has to cast — `Query.test.ts` carries an `anyDef<T>` helper for it. `World.query` takes `ComponentDef<unknown>` instead, so a system writes `world.query(Transform, PlayerTag)` with no cast. Filed as BL-065 rather than fixed in `QueryCache`.
+- **Third surprise, and it is not this task's:** BL-059's 0.15 ms query-budget assertion is flaky under full-suite load — 2 failures in 6 runs, **confirmed at the same rate on a clean tree before continuing**. Filed as BL-064. Not worked around, not loosened.
+- Discovered work: BL-064, BL-065. Unblocked by this: BL-060, BL-063 (both were waiting on a `World` to exist).
 
 ### BL-058 — ECS-lite part 2: sparse-set component stores
 - **Completed:** 2026-08-18 · **PR:** — (pushed direct to `main`)

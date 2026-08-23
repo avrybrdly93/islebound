@@ -34,6 +34,146 @@ What was added, and what it protects.
 
 ---
 
+## 2026-08-23 — BL-061 Assemble the `World` class
+
+**Type:** feat
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~2h
+
+### What changed
+
+`sim/World.ts` — `04` §4.3's `World`, assembled from the four pieces that
+already existed: `EntityAllocator` (BL-007), `ComponentRegistry` (BL-058),
+`QueryCache` (BL-059), `EventBus` (BL-006). Every delegating method is one
+line, which is criterion 1. And `sim/systems/order.ts` — the `System` type,
+`RegisteredSystem`, and `SYSTEM_ORDER`, frozen and **empty**. 23 new cases; the
+suite goes 305 → 328.
+
+`step(dt)` increments the tick, runs the system array in order, and drains the
+deferred event queue. That is the whole tick, and it is the first time this
+repository has had one.
+
+### Why it was done this way
+
+**`SYSTEM_ORDER` is empty and that is the deliverable.** No system exists yet;
+`05` §1 lists thirteen files under `sim/systems/` and every one is a later
+item. Populating the array with names that do not resolve would not compile,
+and populating it with stubs would put thirteen no-op functions in the tick
+loop that no acceptance criterion asked for. The deliverable is the *shape* —
+the type, the array, and `step` running it — and the first real system appends
+one line.
+
+**The tick increments before the systems run.** A system reading `world.tick`
+should see the tick it is executing, not the one that finished. Starting at 0
+and incrementing first means `world.tick` is 1 during the first `step`, and 0
+for a world that has not run — both of which read correctly.
+
+**The drain is after every system**, which is the decision `04` §4.4 explicitly
+leaves to "the loop's owner". Two arguments, pointing the same way: events are
+consumed by *presentation*, which is going to draw the end-of-tick state
+anyway, so a mid-tick drain splits one tick's events across two deliveries for
+no benefit; and Phase 7 replaces this choke point with a network hop where the
+server sends a tick's events as a batch, so the tick boundary is where that
+batch is already defined. A throwing system aborts the tick **without**
+draining — a half-run tick has produced a state no system order would produce,
+and telling presentation about it is worse than the throw. The tick counter is
+deliberately not rolled back: the world really did partially advance.
+
+**`destroyEntity` does not reach the stores**, and a test asserts that it does
+not. That is BL-060, a separate item that depends on this one; doing it inline
+is the scope expansion `35` §3 forbids. Asserting the *current* behaviour is
+what makes the boundary move deliberately — when BL-060 lands, that case fails,
+and its failure is the reminder to update `World`'s module comment with it.
+
+### Surprises
+
+**`EventBus<M>` is invariant in `M`, and that decided the shape of this class.**
+The natural design was `World<M>` with the event map defaulted, and `step`
+importing `SYSTEM_ORDER` directly. It does not compile. `EventBus` holds a
+`Map<keyof M, Slot[]>` and an `on` whose handler parameter is `M[K]`, so
+`World<M>` is assignable to `World<M2>` for **no other `M2` at all** — not the
+empty map, not the widest one. A `System<M>` names `World<M>` in parameter
+position, so a system list is typed at exactly one event map. There is no
+`SYSTEM_ORDER` that serves every `World<M>`.
+
+Three alternatives were tried against the typechecker rather than reasoned
+about, and each produced a real error worth recording: casting at the default
+parameter is sound only while the array is empty — a landmine for whoever adds
+the first system, and nothing would catch it; dropping the type parameter gives
+a bus at `EventMap`, and `keyof object` is `never`, so `emit` accepts nothing
+and the first real system immediately has to undo the decision; and inventing
+the event map here puts a later item's type in the wrong module.
+
+What landed instead is the world **receiving** its system order as a
+constructor argument, which turns out to be better independently of the type
+system: no module-level global reached for from inside a class, a test can run
+two recording systems without touching the authoritative array, and a server
+and a client can share this class with different lists. `04` §4.3's "order is
+data in `sim/systems/order.ts`" is unchanged — what changed is who reads it.
+Decision 0025.
+
+**`QueryCache.query` takes the *bottom* of the component-def family.** Its
+parameter is `AnyComponentDef = ComponentDef<never>`, which under
+`exactOptionalPropertyTypes` nothing but itself is assignable to — so a caller
+holding a `ComponentDef<Vec>` must cast, and `Query.test.ts` carries an
+`anyDef<T>` helper for exactly that. A query never reads a def's value type, so
+the *top* is the correct parameter: `World.query` takes
+`ComponentDef<unknown>`, and a system writes `world.query(Transform,
+PlayerTag)` with no cast anywhere. One erasing cast lives inside `World.query`
+instead of one at every call site. Widening `QueryCache`'s own signature would
+delete even that, and is filed as BL-065 rather than done here.
+
+**BL-059's 0.15 ms query-budget assertion is flaky under full-suite load, and
+it is not this task's doing.** It failed during verification, so it was
+measured before being explained: alone it passes 5/5; inside `pnpm test:node`,
+where 87 suites share four cores, it fails at ~0.17–0.18 ms in **2 of 6 runs on
+a clean tree** and **2 of 6 with these changes present**. Same rate, so the
+cause is the harness. Filed as BL-064, not loosened and not skipped — the
+0.15 ms figure is a real contract from `04` §2, and the problem is that a
+wall-clock sample taken while N processes compete is not a measurement of the
+thing the contract is about. Decision 0023 already established the pattern it
+probably wants: derive the threshold from a control measured in the same run.
+
+**A smaller one, for the record.** `06` bans both non-null assertions **and**
+`as` assertions of the `x as T` form the compiler could infer, and
+`noUncheckedIndexedAccess` makes every array read `T | undefined`. The repo's
+existing idiom is `const x = arr[i]; assert.ok(x !== undefined);` — which
+`ComponentStore.test.ts` and `Query.test.ts` both use and neither `06` nor `07`
+writes down. Worth a line in `07` eventually; not filed, because it is one
+sentence in a doc rather than a task.
+
+### Tests
+
+23 cases in `sim/World.test.ts`, in five groups.
+
+**Criterion 1 cannot be tested by behaviour** — a `World` that reimplemented
+the allocator would behave exactly like one that delegates, because the
+reimplementation would be a copy of the same algorithm. So the cases assert
+*identity*: `store(def)` returns the registry's own memoised object, `query`
+returns the cache's own frozen array (same object on the second call), and
+`queryStats.hits` moves. A second implementation fails all three. The
+index-recycling case is included because a `World` with its own entity counter
+would hand out a live handle numerically equal to a dead one, and nothing else
+in the file would notice.
+
+**Criterion 2's cases run the same three systems in two different orders inside
+one test**, so a `step` that sorted, reversed or ignored the array fails. A
+test that only checked *that* the systems ran would pass against all three.
+
+Also pinned: the tick a system sees is its own (`[1, 2]`, not `[0, 1]`); a
+throwing system aborts the tick, names itself, keeps the original as `cause`,
+and leaves the queue undrained; `emit` stays synchronous while `enqueue` waits
+for the boundary; two identically-stepped worlds agree, and two worlds share no
+state.
+
+### Follow-ups
+- BL-064 — BL-059's query-budget assertion is flaky under full-suite load
+- BL-065 — `QueryCache.query` takes the bottom of the def family, so every direct caller casts
+- BL-060 and BL-063 are **unblocked** — both were waiting only on a `World` to exist
+
+---
+
 ## 2026-08-22 — BL-059 ECS-lite part 3: cached queries by component signature
 
 **Type:** feat
