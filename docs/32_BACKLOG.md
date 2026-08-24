@@ -39,7 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-*(nothing — pick the topmost unblocked task from Ready)*
+**BL-064** — BL-059's query-budget assertion is flaky under full-suite load (claimed 2026-08-24; see `33_CURRENT_TASK.md`)
 
 ---
 

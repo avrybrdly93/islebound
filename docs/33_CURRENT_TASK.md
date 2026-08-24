@@ -4,9 +4,47 @@
 
 ---
 
-## Status: IDLE
+## Status: IN_PROGRESS
 
-No task in progress. **BL-061 is complete** — both acceptance criteria met, with
+## Current task
+**BL-064** — BL-059's query-budget assertion is flaky under full-suite load
+- **Phase:** 0
+- **Started:** 2026-08-24
+- **Branch:** claude/sharp-lovelace-f6duo2
+- **Docs read:** 29, 04 §2, 40 (decision 0023), AI_DEVELOPMENT_WORKFLOW
+- **Estimated size:** S
+
+Chosen over the topmost Ready item BL-060 because the prior handoff flagged it
+as the judgement call and the workflow's "when things go wrong" table treats a
+suite that fails 2–5 runs in 8 as work that outranks the backlog: it makes every
+future session's verify step ambiguous, including this one's. Confirmed
+pre-existing before starting — a fresh `pnpm test:node` on `origin/main`
+(`fbbd919`) failed the assertion at **0.2148 ms** on the first run.
+
+### Plan
+1. Replace the single averaged 200-pass block in `Query.test.ts`'s cached-query
+   budget test with a best-of-N measurement — run several timed blocks, take the
+   **minimum** per-query time, which is the least-contended sample and the one
+   closest to the query's intrinsic cost. Keep the 0.15 ms budget exactly.
+2. Keep all three existing guards (query matches all 10,000, every timed pass a
+   cache hit, the handle sink is consumed).
+3. Name the rejected options in a comment per the acceptance criteria: the
+   in-process control (decision 0023's pattern) and isolating the timed suite.
+4. Verify the full suite passes ≥ 6 consecutive runs on this loaded container.
+
+### Acceptance criteria (from BL-064)
+- [ ] Full suite passes ≥ 6 consecutive runs on a loaded container
+- [ ] The 0.15 ms budget is not raised, and the assertion is not skipped/deleted
+- [ ] The rejected options are named in a comment
+
+### Notes
+Prior IDLE handoff below, preserved for the next session.
+
+---
+
+## Prior handoff (was IDLE before BL-064)
+
+**BL-061 is complete** — both acceptance criteria met, with
 the reasoning in `34_DEVELOPMENT_LOG.md` 2026-08-23 (BL-061) and the decision in
 `40_DECISION_LOG.md` 0025.
 
