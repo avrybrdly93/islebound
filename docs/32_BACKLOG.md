@@ -39,7 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-**BL-064** — BL-059's query-budget assertion is flaky under full-suite load (claimed 2026-08-24; see `33_CURRENT_TASK.md`)
+*(nothing — pick the topmost unblocked task from Ready)*
 
 ---
 
@@ -86,15 +86,6 @@ Current phase: **Phase 0 — Foundation**
   - [ ] Either an eviction policy exists (LRU on a cap, or drop-if-unqueried-for-N-ticks), or `World.query` is documented as accepting only statically-known signatures and something checks it
   - [ ] Whichever is chosen, the *other* is named in a comment with why it was not
 - **Notes:** Filed 2026-08-22 by BL-059. Deliberately not fixed inline: an eviction policy is a guess without a caller that needs one, and `35` §3 forbids expanding scope. Depends on BL-061 because the answer may be "`World` owns the lifetime and clears on world teardown", which needs a `World`. **Not urgent** — nothing in the repository builds a dynamic signature today, and the entry-count is observable via `QueryCache.size` if anyone wants to check, now also via `World.queryStats.size`. **Unblocked 2026-08-23**: `World` exists, and it does own the cache's lifetime — one `QueryCache` per `World`, constructed with it and unreachable from outside — so "the world owns it and it dies with the world" is now an available answer rather than a hypothesis.
-
-### BL-064 — BL-059's query-budget assertion is flaky under full-suite load
-- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** 29
-- **Description:** `Query.test.ts`'s `iterates a cached 6-component query over 10,000 entities within budget` asserts a wall-clock figure against BL-059's 0.15 ms criterion. Run alone it passes every time (5/5, measured). Run inside `pnpm test:node`, where `node --test` runs 87 suites across worker processes on a shared container, it fails intermittently at around **0.17-0.18 ms** — measured over two 8-run blocks on the same container: **5 failures in 8 runs on pre-session `main` (`5b4cc15`)** against **2 in 8 with BL-061's changes present**. The rate is a property of the harness, not of any change — and BL-061's 23 extra cases, which add parallel load, did not raise it.
-- **Acceptance criteria:**
-  - [ ] The full suite passes repeatedly (≥ 6 consecutive runs) on a loaded container
-  - [ ] **The 0.15 ms budget itself is not raised**, and the assertion is not skipped or deleted. The criterion is a real performance contract from `04` §2 and BL-059; the problem is that a wall-clock measurement taken while N other processes compete for 4 cores is not a measurement of the thing the contract is about
-  - [ ] Whatever is chosen — isolating the timed suite, taking a best-of-N rather than a single sample, measuring against an in-process control the way decision 0023 does for allocation — the rejected options are named in a comment
-- **Notes:** Filed 2026-08-23 by BL-061, which hit it and confirmed it pre-existing before continuing. **Do not "fix" this by loosening the number.** Decision 0023 already established the pattern this probably wants: derive the threshold from a control measured in the same process and run, so it moves with the machine instead of being a constant that is right on one box. The cheapest partial fix is a best-of-N sample, since the failing runs are ~15% over a budget the isolated runs clear by ~2x. **The rate is high enough to matter**: on the 8-run block against pre-session `main` it failed 5 times, so a session that runs the suite once has better than even odds of seeing it.
 
 ### BL-065 — `QueryCache.query` takes the bottom of the def family, so every direct caller casts
 - **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** 04
@@ -417,6 +408,13 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-064 — BL-059's query-budget assertion is flaky under full-suite load
+- **Completed:** 2026-08-24 · **PR:** — (pushed direct to `main`)
+- `Query.test.ts`, the cached 6-component-query budget case only. Confirmed pre-existing first: a fresh `pnpm test:node` on `origin/main` (`fbbd919`) failed the assertion at **0.2148 ms**. The old form averaged a single 200-query block (~16 ms wall), so any scheduler preemption during that window folded into the number under `node --test`'s 87-suite worker load. Replaced with a **best-of-N per-sample minimum**: each cache hit (query + full 10,000-handle iteration, exactly what the budget bounds) is timed on its own and the minimum over 5000 samples is asserted. A single hit is far shorter than a scheduler quantum, so some sample runs uninterrupted even under sustained load. **The 0.15 ms budget is unchanged and the assertion is neither skipped nor deleted** (criterion 2); the two rejected options — an in-process control (decision 0023's pattern) and isolating the timed suite — are named in the comment (criterion 3).
+- **Surprise, and it reframes the task.** On this container the query's cost is genuinely near the budget even *idle*: measured **iteration-only ~0.15 ms** and best-case query+iteration **~0.12 ms** isolated, against BL-059's original ~0.078 ms on its box. So this is not purely a contention artefact — the 0.15 ms budget is marginal on slower hardware, and only the single fastest JIT-warmed hit (~0.12 ms) has headroom. A block *average*, however short the block, reads ~0.14 ms here with none. Per-sample minimum was the one form that both keeps the budget and clears it reliably. **If this flakes again, the in-process control is the correct next step** — on a machine where iteration alone approaches 0.15 ms, an absolute wall-clock constant is the wrong contract, and decision 0023 already has the pattern.
+- **Verification:** 40 consecutive full-suite runs clean on this loaded container after the fix (criterion 1 asked for ≥ 6). One earlier run failed during tuning of a rejected block-average variant and could **not** be reproduced in the 40 runs of the final form; it is recorded rather than hidden, and if a rare non-budget flake exists it is not this task's and was not identified.
+- Discovered work: none. Acceptance criteria all met.
 
 ### BL-061 — Assemble the `World` class
 - **Completed:** 2026-08-23 · **PR:** — (pushed direct to `main`)

@@ -4,45 +4,17 @@
 
 ---
 
-## Status: IN_PROGRESS
+## Status: IDLE
 
-## Current task
-**BL-064** — BL-059's query-budget assertion is flaky under full-suite load
-- **Phase:** 0
-- **Started:** 2026-08-24
-- **Branch:** claude/sharp-lovelace-f6duo2
-- **Docs read:** 29, 04 §2, 40 (decision 0023), AI_DEVELOPMENT_WORKFLOW
-- **Estimated size:** S
-
-Chosen over the topmost Ready item BL-060 because the prior handoff flagged it
-as the judgement call and the workflow's "when things go wrong" table treats a
-suite that fails 2–5 runs in 8 as work that outranks the backlog: it makes every
-future session's verify step ambiguous, including this one's. Confirmed
-pre-existing before starting — a fresh `pnpm test:node` on `origin/main`
-(`fbbd919`) failed the assertion at **0.2148 ms** on the first run.
-
-### Plan
-1. Replace the single averaged 200-pass block in `Query.test.ts`'s cached-query
-   budget test with a best-of-N measurement — run several timed blocks, take the
-   **minimum** per-query time, which is the least-contended sample and the one
-   closest to the query's intrinsic cost. Keep the 0.15 ms budget exactly.
-2. Keep all three existing guards (query matches all 10,000, every timed pass a
-   cache hit, the handle sink is consumed).
-3. Name the rejected options in a comment per the acceptance criteria: the
-   in-process control (decision 0023's pattern) and isolating the timed suite.
-4. Verify the full suite passes ≥ 6 consecutive runs on this loaded container.
-
-### Acceptance criteria (from BL-064)
-- [ ] Full suite passes ≥ 6 consecutive runs on a loaded container
-- [ ] The 0.15 ms budget is not raised, and the assertion is not skipped/deleted
-- [ ] The rejected options are named in a comment
-
-### Notes
-Prior IDLE handoff below, preserved for the next session.
-
----
-
-## Prior handoff (was IDLE before BL-064)
+No task in progress. **BL-064 is complete** (2026-08-24) — the cached-query
+budget assertion in `Query.test.ts` now takes a best-of-N per-sample minimum
+instead of one block average, so scheduler preemption under full-suite load no
+longer folds into the number. 40 consecutive full-suite runs clean after the
+fix; the 0.15 ms budget is unchanged. See `34_DEVELOPMENT_LOG.md` 2026-08-24
+(BL-064) — its **Surprises** are load-bearing: on this container the query
+costs ~0.12 ms best-case and iteration alone ~0.15 ms even idle, so the budget
+is marginal on slower hardware and the in-process control (decision 0023) is
+the correct next move if it ever flakes again.
 
 **BL-061 is complete** — both acceptance criteria met, with
 the reasoning in `34_DEVELOPMENT_LOG.md` 2026-08-23 (BL-061) and the decision in
@@ -65,16 +37,15 @@ The topmost unblocked task in Phase 0's Ready list, per
 
 **Read the file, do not trust this line.** `BL-056` still sits above it in
 Ready and is still Phase 1, so it is still not a candidate under the workflow's
-phase discipline — fifth session running.
+phase discipline — sixth session running.
 
-**But read `BL-064` first and decide whether it outranks the list.** The
-workflow's "when things go wrong" table says a red CI on `main` is the top task
-regardless of the backlog. This is not quite that — the flake is pre-existing,
-it is not caused by any change, and `main` is green on a good run — but a suite
-that fails 2 runs in 6 will make every future session's verify step ambiguous,
-and the next agent to hit it will spend the time this one already spent proving
-it is not theirs. That is a judgement call, deliberately left to whoever reads
-this rather than made here.
+**BL-064 (the query-budget flake) is now done**, so it no longer outranks the
+list — the verify step is reliable again (40 consecutive clean runs). The one
+caveat the next session should carry: on this container the 0.15 ms budget is
+*marginal even idle* (iteration alone ~0.15 ms), and the fix relies on the
+single fastest of 5000 samples clearing it. If it flakes again, do not re-tune
+the sampling — move to the in-process control (decision 0023), which is the
+right contract on hardware this slow. See the 2026-08-24 (BL-064) log entry.
 
 ## What BL-061 leaves for the next session
 
@@ -290,6 +261,7 @@ Blockers requiring human input include: any change to `04_TECHNICAL_ARCHITECTURE
 
 | Task | Completed | PR | Notes |
 |---|---|---|---|
+| BL-064 | 2026-08-24 | — | Query-budget assertion: best-of-N per-sample minimum instead of one block average, so full-suite load stops folding into the number. 40 consecutive clean runs; 0.15 ms budget unchanged. Surprise: this container's iteration alone is ~0.15 ms idle, so the budget is marginal — in-process control (decision 0023) is the next move if it recurs |
 | BL-059 | 2026-08-22 | — | ECS-lite part 3 — cached queries, version-keyed invalidation (decision 0024), 0.0784 ms cached against a 0.15 ms budget; landed the two `version` counters BL-058 asked for; filed BL-063 |
 | BL-058 | 2026-08-18 | — | ECS-lite part 2 — sparse-set component stores and `ComponentRegistry.store(def)`; filed BL-060/061/062 |
 | BL-050 | 2026-08-13 | — | Replaced the allocation instrument with a call-site-attributed one (`HeapProfiler.startSampling`); closed BL-004's last criterion; 0 `todo` remaining; filed BL-053 |
