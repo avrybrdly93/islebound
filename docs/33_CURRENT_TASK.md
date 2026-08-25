@@ -4,39 +4,72 @@
 
 ---
 
-## Status: IN PROGRESS — **BL-060** (`World.destroyEntity` must reach the component stores, S, Phase 0)
+## Status: IDLE
 
-Claimed 2026-08-25, before any code, per `AI_DEVELOPMENT_WORKFLOW.md` §2. It is
-the topmost unblocked task in Phase 0's Ready list: `BL-056` still sits above it
-and is still **Phase 1**, so it is still not a candidate under the workflow's
-phase discipline — seventh session running.
+No task in progress. **BL-060 is complete** (2026-08-25) — `World.destroyEntity`
+now calls `ComponentRegistry.removeEntity` before delegating to the allocator,
+so a destroyed entity's slots are gone from every store at the moment of
+destruction. Both acceptance criteria met; 334/334 node tests, was 328. See
+`34_DEVELOPMENT_LOG.md` 2026-08-25 (BL-060) — its **Surprises** are
+load-bearing.
 
-### The two decisions this claim takes, stated before implementing
+**BL-064 is complete** (2026-08-24) and the query-budget assertion is reliable
+again, but the caveat it left still stands: on this container the 0.15 ms
+budget is *marginal even idle* (iteration alone ~0.15 ms), and the fix relies on
+the single fastest of 5000 samples clearing it. If it flakes again, do not
+re-tune the sampling — move to the in-process control (decision 0023).
 
-1. **Per-store `remove` at destroy time, synchronously — not a deferred sweep.**
-   The acceptance criterion asks for the cost to be stated and the rejected
-   option named; the deciding argument is not cost but *when the version
-   counter moves*. `QueryCache` invalidates on store `version`, and a sweep on
-   a cadence would bump every store's version on the sweep tick regardless of
-   whether anything relevant changed — so every cached query would miss on that
-   tick, for reasons no system could see. A synchronous fan-out moves the
-   version exactly when the entity was destroyed, which is when it should move.
-   `ComponentStore.prune()` stays, as the sweep for stores used without a
-   `World`, and its doc names the relationship.
-2. **The fan-out lives on `ComponentRegistry`, not on `World`.** The registry
-   owns the heterogeneous store map and already carries the single erasing cast
-   that map needs; iterating it from `World` would either export the map or add
-   a second cast somewhere else. `World.destroyEntity` stays one line of
-   delegation plus one, which is what `World`'s module comment asks of it.
+**There is a tick.** `World.step(dt)` advances it, runs `SYSTEM_ORDER`, and
+drains the deferred event queue. `SYSTEM_ORDER` is still empty, so a step is a
+no-op with a clock.
 
-### The ordering trap this task has to get right
+## Next action for an agent
 
-`ComponentStore.remove` returns `false` for a dead or stale handle — it checks
-`allocator.isLive` first. So `destroyEntity` **must remove from the stores
-before destroying the handle**; the obvious order (destroy, then fan out) makes
-every `remove` a silent no-op and leaves exactly the leak the task is about,
-with a green test suite if nothing asserts the store's `size`. A case asserts
-the order rather than the outcome alone.
+The topmost unblocked task in Phase 0's Ready list, per
+`AI_DEVELOPMENT_WORKFLOW.md` §2.
+
+**Read the file, do not trust this line.** As of this session `BL-056` still
+sits at the top of Ready and is still **Phase 1**, so it is still not a
+candidate under the workflow's phase discipline — seventh session running.
+After it, the Phase-0 items in list order are **BL-066** (new, filed by this
+session), **BL-062**, **BL-063**, **BL-065**, then **BL-008** (the fixed-timestep
+game loop, `M`, and the first one that is a feature rather than a cleanup).
+
+Four `S` cleanups in a row ahead of the loop is worth a moment's thought rather
+than an automatic descent: **BL-008 is the item the phase is actually for**, and
+none of the four blocks it. If a session has the budget for an `M`, taking
+BL-008 and leaving the cleanups is a defensible reading of "topmost unblocked" —
+but say so in the log, because the workflow's default is list order.
+
+## What BL-060 leaves for the next session
+
+1. **The ordering trap is now documented in three places and is still the thing
+   to get wrong.** `ComponentStore.remove` refuses a dead or stale handle, so
+   anything that cleans up after a destroy must run *before* the handle dies.
+   The reversed order fails 4 test cases today; it failed **none** before this
+   session's cases existed, because a destroyed entity's components are
+   unreadable either way. Any future "clean up on destroy" work — a save-index
+   removal, a spatial-hash eviction — inherits exactly this trap.
+2. **`ComponentRegistry`'s store map is now typed `EntityScopedStore`, not
+   `unknown`.** That is what let `removeEntity` be written with no type
+   assertion. It carries only `remove`, deliberately: it is the erased surface
+   the *fan-out* needs, not a general one. A save pass needs more, and widening
+   it is **BL-066** rather than a drive-by.
+3. **`ComponentStore.prune()` is not dead code and should not be deleted.** It
+   is the sweep BL-060 rejected, kept for a store driven directly by an
+   `EntityAllocator` with no `World` between them — which is what
+   `ComponentStore.test.ts` does. Its doc now carries the comparison, so
+   deleting it would take the record of the rejected option with it.
+4. **One new test case grades nothing about the fan-out and says so in place.**
+   The cached-query case survives all three perturbations, because `QueryCache`
+   keys on the allocator's version too. Its load-bearing half is the
+   store-`version` assertion beside it. Do not read it as coverage of the
+   invalidation path.
+5. **The verify block still cannot be run as written.** `pnpm sim --ticks 20000
+   --assert-hash` and `pnpm check:bundle` do not exist (BL-014, BL-018), and
+   `pnpm test` is `pnpm test:node`. That is **BL-062**, still open, and it is
+   the reason every session's verification section has to explain the same
+   three absences.
 
 ## What BL-061 leaves for the next session
 
