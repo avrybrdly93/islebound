@@ -39,7 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-*(nothing — pick the topmost unblocked task from Ready)*
+**BL-060** — `World.destroyEntity` must reach the component stores. Claimed 2026-08-25; entry stays in Ready below until it lands. See `33_CURRENT_TASK.md`.
 
 ---
 

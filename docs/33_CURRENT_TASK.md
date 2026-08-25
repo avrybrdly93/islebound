@@ -4,48 +4,39 @@
 
 ---
 
-## Status: IDLE
+## Status: IN PROGRESS — **BL-060** (`World.destroyEntity` must reach the component stores, S, Phase 0)
 
-No task in progress. **BL-064 is complete** (2026-08-24) — the cached-query
-budget assertion in `Query.test.ts` now takes a best-of-N per-sample minimum
-instead of one block average, so scheduler preemption under full-suite load no
-longer folds into the number. 40 consecutive full-suite runs clean after the
-fix; the 0.15 ms budget is unchanged. See `34_DEVELOPMENT_LOG.md` 2026-08-24
-(BL-064) — its **Surprises** are load-bearing: on this container the query
-costs ~0.12 ms best-case and iteration alone ~0.15 ms even idle, so the budget
-is marginal on slower hardware and the in-process control (decision 0023) is
-the correct next move if it ever flakes again.
+Claimed 2026-08-25, before any code, per `AI_DEVELOPMENT_WORKFLOW.md` §2. It is
+the topmost unblocked task in Phase 0's Ready list: `BL-056` still sits above it
+and is still **Phase 1**, so it is still not a candidate under the workflow's
+phase discipline — seventh session running.
 
-**BL-061 is complete** — both acceptance criteria met, with
-the reasoning in `34_DEVELOPMENT_LOG.md` 2026-08-23 (BL-061) and the decision in
-`40_DECISION_LOG.md` 0025.
+### The two decisions this claim takes, stated before implementing
 
-**There is a tick now.** `World.step(dt)` advances the tick, runs
-`SYSTEM_ORDER`, and drains the deferred event queue. `SYSTEM_ORDER` is empty,
-so a step is currently a no-op with a clock — which is exactly what the next
-few items fill in.
+1. **Per-store `remove` at destroy time, synchronously — not a deferred sweep.**
+   The acceptance criterion asks for the cost to be stated and the rejected
+   option named; the deciding argument is not cost but *when the version
+   counter moves*. `QueryCache` invalidates on store `version`, and a sweep on
+   a cadence would bump every store's version on the sweep tick regardless of
+   whether anything relevant changed — so every cached query would miss on that
+   tick, for reasons no system could see. A synchronous fan-out moves the
+   version exactly when the entity was destroyed, which is when it should move.
+   `ComponentStore.prune()` stays, as the sweep for stores used without a
+   `World`, and its doc names the relationship.
+2. **The fan-out lives on `ComponentRegistry`, not on `World`.** The registry
+   owns the heterogeneous store map and already carries the single erasing cast
+   that map needs; iterating it from `World` would either export the map or add
+   a second cast somewhere else. `World.destroyEntity` stays one line of
+   delegation plus one, which is what `World`'s module comment asks of it.
 
-**Three items were unblocked or filed by this session**: `BL-060` and `BL-063`
-were waiting only on a `World` to exist and now are not; `BL-064` and `BL-065`
-are new.
+### The ordering trap this task has to get right
 
-## Next action for an agent
-
-The topmost unblocked task in Phase 0's Ready list, per
-`AI_DEVELOPMENT_WORKFLOW.md` §2. As of this session that is **BL-060**
-(`World.destroyEntity` must reach the component stores, S).
-
-**Read the file, do not trust this line.** `BL-056` still sits above it in
-Ready and is still Phase 1, so it is still not a candidate under the workflow's
-phase discipline — sixth session running.
-
-**BL-064 (the query-budget flake) is now done**, so it no longer outranks the
-list — the verify step is reliable again (40 consecutive clean runs). The one
-caveat the next session should carry: on this container the 0.15 ms budget is
-*marginal even idle* (iteration alone ~0.15 ms), and the fix relies on the
-single fastest of 5000 samples clearing it. If it flakes again, do not re-tune
-the sampling — move to the in-process control (decision 0023), which is the
-right contract on hardware this slow. See the 2026-08-24 (BL-064) log entry.
+`ComponentStore.remove` returns `false` for a dead or stale handle — it checks
+`allocator.isLive` first. So `destroyEntity` **must remove from the stores
+before destroying the handle**; the obvious order (destroy, then fan out) makes
+every `remove` a silent no-op and leaves exactly the leak the task is about,
+with a green test suite if nothing asserts the store's `size`. A case asserts
+the order rather than the outcome alone.
 
 ## What BL-061 leaves for the next session
 
