@@ -34,6 +34,102 @@ What was added, and what it protects.
 
 ---
 
+## 2026-08-25 — BL-060 `World.destroyEntity` must reach the component stores
+
+**Type:** fix
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~1h
+
+### What changed
+
+`World.destroyEntity` removed the entity's handle from the allocator and
+stopped, leaving its components in every store. `ComponentRegistry` gained
+`removeEntity(entity)`, which removes the entity from every store it owns and
+returns how many held one, and `World.destroyEntity` now calls it **before**
+delegating to the allocator. `ComponentStore.prune()` is unchanged in behaviour
+and its documentation is rewritten to say what it is *for* rather than what is
+missing. The registry's store map changes value type from `unknown` to a new
+exported `EntityScopedStore` — the part of a store that does not mention its
+value type.
+
+### Why it was done this way
+
+The acceptance criterion asked for per-store `remove` or a deferred sweep, with
+the cost of each stated and the rejected one named. The costs are
+`O(stores)` per destroy against `O(total entries)` per sweep, but **cost is not
+what decided it**. `QueryCache` invalidates on store `version`, so a sweep on a
+cadence would bump the version of every store it touched on whichever tick it
+happened to run — every cached query in the world missing for a reason no
+system could point at. The eager fan-out moves the version at the moment the
+entity was destroyed, which is when it should move. `prune()` stays for a store
+driven directly by an `EntityAllocator` with no `World` between them, which is
+what `ComponentStore.test.ts` does and what a future non-`World` owner would do.
+
+The fan-out lives on `ComponentRegistry` rather than on `World` because the
+registry owns the heterogeneous store map and already carries the single
+erasing cast that map needs. Iterating it from `World` would have meant either
+exporting the map or adding a second cast somewhere else. Typing the map as
+`EntityScopedStore` instead of `unknown` means `removeEntity` needs **no**
+assertion at all, and the one in `store<T>` is unchanged in kind — still a
+single downcast, in the one place that owns the map.
+
+`World.destroyEntity` deliberately has no liveness check. `removeEntity` is
+harmless on a handle that is not live (every store refuses it), and the
+allocator is about to answer the same question; asking twice would be `World`
+duplicating a decision one of its four pieces already makes, which its own
+module comment rules out.
+
+### Surprises
+
+**1. The ordering is load-bearing and the wrong order is silent.**
+`ComponentStore.remove` refuses a dead or stale handle — it checks
+`allocator.isLive` first. So `destroyEntity` has to fan out *before* destroying
+the handle. Written the obvious way round (destroy, then clean up) every
+`remove` returns `false`, the slots stay exactly where they were, and **nothing
+fails**: a destroyed entity's components are unreadable either way, so `has`,
+`get`, `entities` and `query` all behave identically. Only an assertion on the
+store's `size` catches it. The test file therefore asserts the *mechanism* —
+it destroys through the allocator directly and watches `removeEntity` return
+`0` — rather than trusting a size check to have been written.
+
+**2. One of the new cases grades nothing about the fan-out, and it says so.**
+The case checking that a cached query drops a destroyed entity was written
+believing it exercised the invalidation path. It does not: `QueryCache` keys on
+the *allocator's* version as well as the stores', and every store method skips
+non-live handles, so the query is correct with or without any of this task's
+code. It survives all three perturbations below. Rather than delete it or let
+it read as a check, the case now carries a `version` assertion beside it — the
+store's version does not move without the fan-out — and its comment names which
+half is load-bearing.
+
+**3. The `ComponentRegistry.stores()` iterator the backlog expected was not
+needed.** BL-060's note said this task "decides whether the fan-out needs one",
+and the answer is no: `removeEntity` iterates the map from inside the class, so
+nothing is exported and the map stays sealed. That leaves the original question
+genuinely open for the first caller that *is* outside — a save pass or a debug
+overlay — so it is filed as **BL-066** rather than answered by silence.
+
+### Verification
+
+- 334/334 node tests (was 328), `lint`, `lint:rules`, `typecheck`,
+  `format:check`, `build` all clean.
+- **Three perturbations applied, run and reverted.** Reversing the order
+  (destroy, then fan out) fails 4 cases. Removing the fan-out entirely fails 5.
+  A fan-out that `break`s at the first store to report a removal fails 1 —
+  which is why the "every store, not just the first" case exists.
+- `pnpm sim --ticks 20000 --assert-hash` and `pnpm check:bundle` were **not**
+  run: neither command exists yet (BL-014, BL-018), which is BL-062's whole
+  subject. `pnpm test` likewise is `pnpm test:node` in this repository.
+
+### Follow-ups
+
+- **BL-066** filed (registry store enumeration).
+- BL-063 (`QueryCache` eviction) and BL-065 (`QueryCache.query` takes the bottom
+  of the def family) are both still open and both still `S`; neither was touched.
+
+---
+
 ## 2026-08-24 — BL-064 Query-budget assertion flaky under full-suite load
 
 **Type:** fix
