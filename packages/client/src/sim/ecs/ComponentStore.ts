@@ -70,18 +70,23 @@
  * bits. A second implementation of that rule is a second thing to keep in
  * sync.
  *
- * ## Lazy reclamation, and why `prune` exists
+ * ## Reclamation: eager through a `World`, lazy through `prune` (BL-060)
  *
- * Destroying an entity does not remove its components — the allocator knows
- * nothing about stores, and there is no `World` yet to fan the destruction out
- * (`04` §4.3 sketches one; BL-007's handoff note 6 records that it is
- * unbuilt). So a destroyed entity's slot lingers until either its index is
- * reused (`set` overwrites it) or {@link ComponentStore.prune} is called.
+ * A `ComponentStore` on its own still knows nothing about entity destruction:
+ * the allocator does not call it, so a handle destroyed behind the store's
+ * back leaves its slot occupied until either the index is reused (`set`
+ * overwrites it) or {@link ComponentStore.prune} sweeps it.
  *
- * That is invisible to every reader — `has`/`get`/`entities` all skip
- * non-live handles — but it is memory, and a store with an unbounded leak and
- * no way to address it would not be complete. `prune()` is the way to address
- * it; wiring it (or per-store `remove`) into `World.destroyEntity` is BL-060.
+ * What changed with BL-060 is that a store reached through a `World` is no
+ * longer in that position. `World.destroyEntity` calls
+ * {@link ComponentRegistry.removeEntity}, which removes the entity from every
+ * store it owns **before** the handle is destroyed — so under a `World` the
+ * slot is gone at the moment of destruction and there is nothing to sweep.
+ *
+ * `prune()` therefore stays, and its job is now specific rather than
+ * universal: it is for a store driven directly by an `EntityAllocator` with no
+ * `World` between them, which is what this file's own tests do and what a
+ * future non-`World` owner would do. See its doc for the cost of each.
  *
  * ## Purity
  *
@@ -153,6 +158,22 @@ export interface Store<T> {
   set(entity: EntityId, value: T): void;
   remove(entity: EntityId): boolean;
   entities(): IterableIterator<EntityId>;
+}
+
+/**
+ * The part of a store that does not mention its value type.
+ *
+ * {@link ComponentRegistry} holds one store per component and cannot name
+ * their differing `T`s in a single map, so the map's value type was `unknown`
+ * and every read out of it needed an assertion. BL-060 needs to call `remove`
+ * across *all* of them, and `remove` is precisely a method that does not read
+ * `T` — so the map is typed as this instead. `ComponentRegistry.removeEntity`
+ * then needs no assertion at all, and the one that remains in
+ * {@link ComponentRegistry.store} is unchanged in kind: still a single
+ * downcast, in the one place that owns the map.
+ */
+export interface EntityScopedStore {
+  remove(entity: EntityId): boolean;
 }
 
 /** Sentinel for "this index has no component here". */
@@ -379,12 +400,27 @@ export class ComponentStore<T> implements Store<T> {
    * Drops every entry whose handle is no longer live, and returns how many
    * were dropped.
    *
-   * Needed because destroying an entity does not reach its components: the
-   * allocator knows nothing about stores and there is no `World` to fan the
-   * destruction out yet (BL-060). Until there is, this is how a long session
-   * reclaims the slots of destroyed entities. Calling it changes nothing
-   * observable through `has`, `get` or `entities` — they already skip these —
-   * only {@link size} and memory.
+   * **This is the sweep, and it is the alternative BL-060 did not take.** The
+   * two ways to reclaim a destroyed entity's slots differ in cost and, more
+   * importantly, in *when* they move {@link version}:
+   *
+   * - Per-store `remove` at destroy time — what `World.destroyEntity` does —
+   *   is `O(stores)` per destroy, each `remove` being an O(1) swap. It moves
+   *   the version of exactly the stores that held the entity, exactly when it
+   *   was destroyed.
+   * - This sweep is `O(size)` per store per call, so `O(total entries)` for a
+   *   world, and on a cadence it would bump the version of every store it
+   *   touched on the tick it happened to run. `QueryCache` keys on version, so
+   *   every cached query would miss on that tick for reasons no system could
+   *   see.
+   *
+   * That is why the eager fan-out is the default and this is not called from
+   * `World` at all. It stays for a store driven directly by an
+   * `EntityAllocator` with no `World` between them — this file's own tests,
+   * and any future non-`World` owner.
+   *
+   * Calling it changes nothing observable through `has`, `get` or `entities`
+   * — they already skip these — only {@link size}, {@link version} and memory.
    */
   prune(): number {
     let dropped = 0;
@@ -418,7 +454,7 @@ export class ComponentStore<T> implements Store<T> {
  * {@link registerName} instead, where the error can say which name.
  */
 export class ComponentRegistry {
-  private readonly stores = new Map<ComponentDef<unknown>, unknown>();
+  private readonly stores = new Map<ComponentDef<unknown>, EntityScopedStore>();
 
   private readonly names = new Map<string, ComponentDef<unknown>>();
 
@@ -463,6 +499,39 @@ export class ComponentRegistry {
   /** Whether a store has been created for this def. */
   has<T>(def: ComponentDef<T>): boolean {
     return this.stores.has(def);
+  }
+
+  /**
+   * Removes `entity`'s component from every store this registry owns, and
+   * returns how many stores held one (BL-060).
+   *
+   * `World.destroyEntity` is the caller, and the **order there is
+   * load-bearing**: {@link ComponentStore.remove} refuses a dead or stale
+   * handle, so this must run *before* the allocator destroys it. Called after,
+   * every `remove` returns `false` and the entity's slots stay exactly where
+   * they were — the leak this method exists to close, with a green suite,
+   * because nothing else in the store's surface changes. `World.test.ts`
+   * asserts the order rather than only the outcome.
+   *
+   * Harmless on a handle that is already dead or was never live: every
+   * `remove` refuses it and the return is `0`. That is what lets
+   * `World.destroyEntity` call this unconditionally instead of re-asking the
+   * allocator a liveness question it is about to ask anyway.
+   *
+   * `O(stores)`, each `remove` being an O(1) swap. The sweeping alternative
+   * and why it was not taken are in {@link ComponentStore.prune}.
+   *
+   * Iterates every store rather than only those that have the entity, because
+   * nothing indexes entity → stores; building that index would cost a write
+   * per `set` to save a read per destroy, on a store count that is the number
+   * of *component types* and so is small and fixed.
+   */
+  removeEntity(entity: EntityId): number {
+    let removed = 0;
+    for (const store of this.stores.values()) {
+      if (store.remove(entity)) removed += 1;
+    }
+    return removed;
   }
 
   private registerName<T>(def: ComponentDef<T>): void {
