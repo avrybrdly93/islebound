@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-060**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-067**.
 
 **Task format:**
 
@@ -39,7 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-**BL-060** — `World.destroyEntity` must reach the component stores. Claimed 2026-08-25; entry stays in Ready below until it lands. See `33_CURRENT_TASK.md`.
+*(nothing — pick the topmost unblocked task from Ready)*
 
 ---
 
@@ -63,13 +63,13 @@ Current phase: **Phase 0 — Foundation**
   - [x] A component added or removed mid-tick is reflected, not served from a stale cache — invalidation is **version-keyed, not tick-keyed**; a per-tick cache satisfies `04` §4.3's wording and fails this criterion outright. See decision 0024
 - **Notes:** Split out of BL-007 on 2026-08-18; **done 2026-08-22**, see `34_DEVELOPMENT_LOG.md`. This slice carries the performance criterion, because it is the only one of the three whose cost the criterion is actually about. **BL-008 and BL-014 named `BL-007` as a dependency when BL-007 meant all three slices; both now name BL-059** — which is now done, so **both are unblocked**, as are BL-060 and BL-061. Landed alongside it: a `version` counter on `ComponentStore` and on `EntityAllocator`, which BL-058's handoff note 5 named as part of this task.
 
-### BL-060 — `World.destroyEntity` must reach the component stores
-- **Phase:** 0 · **Size:** S · **Depends on:** — (**unblocked 2026-08-23**; BL-061 is done) · **Docs:** 04
-- **Description:** Destroying an entity currently leaves its components in every store. Nothing reads them — `has`, `get` and `entities` all skip non-live handles — but the slots are memory, reclaimed only when the index is reused or `ComponentStore.prune()` is called by hand. `World.destroyEntity` should fan the destruction out (per-store `remove`, or a `prune` sweep on a cadence — decide which, and say why).
+### BL-066 — `ComponentRegistry` still exposes no way to enumerate its stores
+- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** 04
+- **Description:** BL-060 asked whether the destroy fan-out needed a `ComponentRegistry.stores()` iterator and the answer turned out to be no: `removeEntity` iterates the map from *inside* the class, so nothing had to be exported and the heterogeneous map stayed sealed behind its one existing cast. That is the right answer for that task and it leaves the original question open for the next caller. A save/load pass (`23`) has to walk every store to serialise it, and a debug overlay (`13`) has to walk every store to count entries — neither can be written from inside `ComponentRegistry`.
 - **Acceptance criteria:**
-  - [ ] After `destroyEntity(e)`, no store holds a slot for `e`
-  - [ ] The cost is stated: per-store `remove` is O(stores) per destroy; a deferred sweep is O(size) per sweep. Whichever is chosen, the other is named in a comment
-- **Notes:** Filed 2026-08-18 by BL-058, which built `prune()` as the interim answer rather than leaving the store with a leak it had no way to address. **Unblocked 2026-08-23** — `World.destroyEntity` now exists and delegates to the allocator and stops. `World.test.ts` carries a case asserting exactly that (`destroyEntity does NOT reach the stores — that is BL-060`), so **that case is the one to change when this lands**, and its failure is the reminder to update `World`'s module comment with it. Note `World` holds the registry privately and exposes no way to enumerate every store, so this task decides whether the fan-out needs one — a `ComponentRegistry.stores()` iterator is the obvious shape and does not exist.
+  - [ ] Either an enumerator exists with a stated type for the erased element (the `EntityScopedStore` shape BL-060 added is one starting point, but a serialiser needs more than `remove`), or the registry documents that per-store access is by def only and names what a save pass should do instead
+  - [ ] Whichever is chosen, the number of `as` assertions in `ComponentStore.ts` does not go up
+- **Notes:** Filed 2026-08-25 by BL-060, which deliberately did not need it. Not urgent: nothing outside the registry wants to enumerate stores today. Note the constraint that makes it non-trivial — TypeScript has no existential types, so an enumerator whose element type mentions the component's `T` cannot be expressed, and every widening either loses the value type or adds an assertion at each call site. BL-065 is the same family of problem one level down.
 
 ### BL-062 — The verify block names three commands that do not exist
 - **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
@@ -408,6 +408,15 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-060 — `World.destroyEntity` must reach the component stores
+- **Completed:** 2026-08-25 · **PR:** — (pushed direct to `main`)
+- `sim/World.ts` and `sim/ecs/ComponentStore.ts`. `World.destroyEntity` now calls the new `ComponentRegistry.removeEntity(entity)` before delegating to the allocator, so after a destroy no store holds a slot for that entity (criterion 1). **Cost is stated on both sides and the rejected option is named** (criterion 2): per-store `remove` is `O(stores)` per destroy, each an O(1) swap; the sweep is `ComponentStore.prune()`, `O(total entries)` per pass, and its doc now says it is the alternative not taken and why.
+- **The deciding argument was not cost.** `QueryCache` invalidates on store `version`, so a sweep on a cadence would bump the version of every store it touched on whichever tick it happened to run — every cached query missing for a reason no system could point at. The eager fan-out moves the version exactly when the entity was destroyed. `prune()` stays for a store driven directly by an `EntityAllocator` with no `World` between them, which is what `ComponentStore.test.ts` does.
+- **The ordering trap, and it is the whole risk of this task.** `ComponentStore.remove` refuses a dead or stale handle, so the fan-out must run *before* the allocator destroys it. The obvious order — destroy, then fan out — makes every `remove` a silent no-op and leaves exactly this leak, **with a green suite**, because a destroyed entity's components are unreadable either way. A case asserts the mechanism rather than only the outcome: it destroys through the allocator directly and watches `removeEntity` return `0`.
+- The case that asserted the opposite (`destroyEntity does NOT reach the stores — that is BL-060`) is rewritten, as its own comment said it would be, and five more join it. **Three perturbations applied, run and reverted**: the reversed order fails 4 cases, no fan-out at all fails 5, and a fan-out that breaks at the first hit fails 1. One assertion is deliberately *not* presented as grading the fan-out and says so in place — `query()` drops a destroyed entity with or without it, since `QueryCache` keys on the allocator's version too.
+- **Verification:** 334/334 node tests (was 328), `lint`, `lint:rules`, `typecheck`, `format:check`, `build` all clean.
+- Discovered work: **BL-066** (`ComponentRegistry` still exposes no way to enumerate its stores). Acceptance criteria all met.
 
 ### BL-064 — BL-059's query-budget assertion is flaky under full-suite load
 - **Completed:** 2026-08-24 · **PR:** — (pushed direct to `main`)
