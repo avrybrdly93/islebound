@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { defineComponent } from '@sim/ecs/ComponentStore';
-import { indexOf } from '@sim/ecs/EntityAllocator';
+import { ComponentRegistry, defineComponent } from '@sim/ecs/ComponentStore';
+import { EntityAllocator, indexOf } from '@sim/ecs/EntityAllocator';
 import { SYSTEM_ORDER, type RegisteredSystem } from '@sim/systems/order';
 import { World } from '@sim/World';
 
@@ -33,6 +33,7 @@ interface Vec {
 const Transform = defineComponent<Vec>('Transform');
 const Velocity = defineComponent<Vec>('Velocity');
 const PlayerTag = defineComponent<true>('PlayerTag');
+const Health = defineComponent<number>('Health');
 
 /** A system that appends its name to `log` when it runs. */
 function recorder(name: string, log: string[]): RegisteredSystem<Record<never, never>> {
@@ -172,10 +173,9 @@ describe('World — criterion 1: delegation, not reimplementation', () => {
     }, /at least one component definition/);
   });
 
-  it('destroyEntity does NOT reach the stores — that is BL-060', () => {
-    // Asserted so the boundary moves deliberately. When BL-060 lands, this case
-    // is the one to change, and its failure is the reminder to change the
-    // module comment and the backlog entry with it.
+  it('destroyEntity reaches the stores — BL-060', () => {
+    // The case that used to assert the opposite. Its failure was the reminder
+    // to change World's module comment and the backlog entry with it.
     const world = emptyWorld();
     const transforms = world.store(Transform);
     const e = world.createEntity();
@@ -183,11 +183,107 @@ describe('World — criterion 1: delegation, not reimplementation', () => {
     assert.equal(transforms.size, 1);
 
     world.destroyEntity(e);
-    assert.equal(transforms.size, 1, 'the slot is still there');
-    assert.equal(transforms.has(e), false, 'but nothing reads it, because it is not live');
+    assert.equal(transforms.size, 0, 'the slot is gone, not merely unreadable');
+    assert.equal(transforms.has(e), false);
     assert.equal(transforms.get(e), undefined);
     assert.deepEqual([...transforms.entities()], []);
-    assert.equal(transforms.prune(), 1, 'prune() is the interim answer BL-058 left');
+    assert.equal(transforms.prune(), 0, 'there is nothing left for the sweep to find');
+  });
+
+  it('destroyEntity reaches EVERY store, not just the first', () => {
+    // A fan-out that stopped at the first hit, or that iterated one store by
+    // accident, passes the case above.
+    const world = emptyWorld();
+    const transforms = world.store(Transform);
+    const healths = world.store(Health);
+    const e = world.createEntity();
+    transforms.set(e, { x: 1, y: 1 });
+    healths.set(e, 3);
+
+    world.destroyEntity(e);
+    assert.equal(transforms.size, 0);
+    assert.equal(healths.size, 0);
+  });
+
+  it('destroyEntity leaves other entities’ components alone', () => {
+    // The counterexample to a fan-out that cleared the stores instead of
+    // removing one entity from them, which passes every case above.
+    const world = emptyWorld();
+    const transforms = world.store(Transform);
+    const doomed = world.createEntity();
+    const survivor = world.createEntity();
+    transforms.set(doomed, { x: 1, y: 1 });
+    transforms.set(survivor, { x: 2, y: 2 });
+
+    world.destroyEntity(doomed);
+    assert.equal(transforms.size, 1);
+    assert.deepEqual(transforms.get(survivor), { x: 2, y: 2 });
+    assert.deepEqual([...transforms.entities()], [survivor]);
+  });
+
+  it('the fan-out runs BEFORE the handle is destroyed — the ordering trap', () => {
+    // ComponentStore.remove refuses a dead or stale handle, so the reversed
+    // order (destroy, then fan out) leaves every slot exactly where it was.
+    // Nothing else observable changes, so only a size assertion catches it —
+    // which is why this case asserts the mechanism and not just the outcome.
+    //
+    // The mechanism is asserted by proving `remove` really does refuse a dead
+    // handle: destroy through the allocator's own path first (a store the
+    // world does not own), then try to remove, and watch it fail.
+    const allocator = new EntityAllocator();
+    const registry = new ComponentRegistry(allocator);
+    const store = registry.store(Transform);
+    const e = allocator.create();
+    store.set(e, { x: 1, y: 1 });
+
+    allocator.destroy(e);
+    assert.equal(registry.removeEntity(e), 0, 'a dead handle is refused by every store');
+    assert.equal(store.size, 1, 'so the slot survives — this is the reversed order');
+    assert.equal(store.prune(), 1, 'and only the sweep can reclaim it now');
+  });
+
+  it('destroyEntity is idempotent and reports the allocator’s answer', () => {
+    const world = emptyWorld();
+    const transforms = world.store(Transform);
+    const e = world.createEntity();
+    transforms.set(e, { x: 1, y: 1 });
+
+    assert.equal(world.destroyEntity(e), true);
+    assert.equal(world.destroyEntity(e), false, 'second destroy is a no-op');
+    assert.equal(transforms.size, 0);
+  });
+
+  it('the store’s version moves at destroy time, which is why the sweep was rejected', () => {
+    // The reason the eager fan-out was chosen over a deferred prune(): the
+    // version moves when the entity was destroyed rather than on whichever
+    // tick a sweep happened to run, so QueryCache invalidates for a reason a
+    // system could point at.
+    //
+    // Note the *query* half of this is not a check on the fan-out and is not
+    // written as one: QueryCache keys on the allocator's version too, and
+    // every store method skips non-live handles, so `query` would drop `a`
+    // even with no fan-out at all. The load-bearing assertion here is the
+    // version one — with no fan-out the store's version does not move.
+    const world = emptyWorld();
+    const transforms = world.store(Transform);
+    const a = world.createEntity();
+    const b = world.createEntity();
+    transforms.set(a, { x: 1, y: 1 });
+    transforms.set(b, { x: 2, y: 2 });
+    assert.deepEqual([...world.query(Transform)], [a, b]);
+    const versionBefore = transforms.version;
+
+    world.destroyEntity(a);
+    assert.ok(transforms.version > versionBefore, 'the destroy itself moved the store version');
+    assert.deepEqual([...world.query(Transform)], [b]);
+  });
+
+  it('destroying an entity with no components costs nothing and still works', () => {
+    const world = emptyWorld();
+    world.store(Transform);
+    const e = world.createEntity();
+    assert.equal(world.destroyEntity(e), true);
+    assert.equal(world.store(Transform).size, 0);
   });
 });
 

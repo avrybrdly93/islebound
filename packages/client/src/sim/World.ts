@@ -82,13 +82,6 @@
  *
  * ## What this deliberately does not do
  *
- * - **`destroyEntity` does not reach the component stores.** It delegates to
- *   the allocator and stops, so the entity's slots stay in every store until
- *   the index is reused or `ComponentStore.prune()` is called. Nothing *reads*
- *   them — `has`, `get` and `entities` all skip non-live handles — so this is
- *   memory, not a correctness bug. Fanning the destruction out is **BL-060**, a
- *   separate item that names this class and depends on this task; doing it here
- *   would be the scope expansion `35` §3 forbids.
  * - **No intent queue.** `04` §4.4's intents are a later item; `step` drains
  *   events, and where the intent drain sits relative to the systems is that
  *   item's decision, not this one's.
@@ -179,14 +172,32 @@ export class World<M extends EventMap = Record<never, never>> {
   }
 
   /**
-   * Destroys an entity, returning whether it was live. Delegates to
-   * {@link EntityAllocator.destroy}.
+   * Destroys an entity and removes its components from every store, returning
+   * whether it was live (BL-060).
    *
-   * **Does not remove the entity's components from their stores** — see the
-   * module comment and BL-060. Reads are unaffected, because every store method
-   * skips non-live handles.
+   * **The two lines are in this order and it matters.**
+   * {@link ComponentStore.remove} refuses a dead or stale handle, so the
+   * fan-out has to happen while the entity is still live. Destroying first and
+   * fanning out after makes every `remove` a silent no-op and leaves exactly
+   * the leak this closes — with nothing failing, because a destroyed entity's
+   * components are unreadable either way. `World.test.ts` asserts the order,
+   * not only the outcome.
+   *
+   * No liveness check here: {@link ComponentRegistry.removeEntity} is harmless
+   * on a handle that is not live (every store refuses it and it returns `0`),
+   * and the allocator is about to answer the same question. Asking it twice
+   * would be this class duplicating a decision one of its four pieces already
+   * makes, which the module comment rules out.
+   *
+   * Cost: `O(stores)` per destroy, each `remove` an O(1) swap. The alternative
+   * — a deferred `prune()` sweep on a cadence, `O(total entries)` — was
+   * rejected because `QueryCache` keys on store `version`, so a sweep would
+   * invalidate every cached query on whichever tick it happened to run. See
+   * {@link ComponentStore.prune}, which stays for stores driven without a
+   * `World`.
    */
   destroyEntity(entity: EntityId): boolean {
+    this.registry.removeEntity(entity);
     return this.allocator.destroy(entity);
   }
 
