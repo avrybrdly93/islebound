@@ -4,55 +4,94 @@
 
 ---
 
-## Status: IN_PROGRESS
+## Status: IDLE
 
-## Current task
-**BL-066** — `ComponentRegistry` still exposes no way to enumerate its stores
-- **Phase:** 0
-- **Started:** 2026-08-29
-- **Branch:** claude/sharp-lovelace-nr6dub
-- **Docs read:** AI_DEVELOPMENT_WORKFLOW, 32, 33, 34, 35, 04, 05, 06, 07
-- **Estimated size:** S
+No task in progress. **BL-066 is complete** (2026-08-29) —
+`ComponentRegistry.stores()` yields a value-erased `ErasedStore` per store, so
+a save pass (`23`) and a debug overlay (`13`) can walk every store from
+outside the class. Both acceptance criteria met, including the one that
+mattered: the `as` count in `ComponentStore.ts` is unchanged at one. 342/342
+node tests, was 334. See `34_DEVELOPMENT_LOG.md` 2026-08-29 (BL-066) and
+decision **0027** — its **Surprises** are load-bearing, especially items 2 and
+3.
 
-**Why this one and not BL-008.** The previous handoff asked the question
-explicitly: four `S` cleanups sit ahead of the `M` the phase is actually for,
-and taking BL-008 instead would be "a defensible reading". It is not the
-reading `AI_DEVELOPMENT_WORKFLOW.md` §2 gives, which is unusually direct —
-*"The topmost unblocked task in the current phase's Ready list. Not the most
-interesting one — the topmost one; the ordering is how the human steers."*
-BL-056 is Phase 1 and so out under phase discipline; BL-066 is the topmost
-Phase-0 item. Taking it.
+**Everything below this line about BL-060, BL-061, BL-059, BL-007/058 is
+still current and was not touched by this task.**
 
-### Plan
-1. Establish the baseline (334/334 before any change).
-2. Decide the shape: an enumerator with a stated erased element type, or a
-   documented refusal. The deciding question is what the two named callers
-   actually need — a save pass (`23`) and a debug overlay (`13`).
-3. Implement, with no new `as` in `ComponentStore.ts` (criterion 2).
-4. Tests, including one that would fail if the erased surface let a caller
-   write through it.
-5. Docs: 32, 33, 34, and 40 if the choice is architecturally significant.
+## Next action for an agent
 
-### Progress
-- [x] Step 1 — baseline 334/334
-- [ ] Step 2
-- [ ] Step 3
-- [ ] Step 4
-- [ ] Step 5
+The topmost unblocked task in Phase 0's Ready list, per
+`AI_DEVELOPMENT_WORKFLOW.md` §2.
 
-### Blockers
-- None
+**Read the file, do not trust this line.** `BL-056` still sits at the top of
+Ready and is still **Phase 1**, so it is still not a candidate under phase
+discipline — eighth session running. After it, the Phase-0 items in list order
+are now **BL-067** and **BL-068** (both new, filed by this session), then
+**BL-062**, **BL-063**, **BL-065**, then **BL-008**.
+
+**Read BL-067's notes before taking it — it is the one item in that list that
+should probably be skipped.** It has no shape until `23` has one, and building
+a registration mechanism with no save format to serve is a guess. That is an
+argument for taking **BL-068** as topmost-that-is-actually-ready, and saying so
+in the log.
+
+The standing question the previous handoff raised is unchanged and is now
+worse by two: **six** `S` items sit ahead of **BL-008**, the `M` the phase is
+actually for, and none of them blocks it. This session took the topmost anyway,
+because §2 is unusually direct — *"Not the most interesting one — the topmost
+one; the ordering is how the human steers."* If a human wants BL-008 pulled
+forward, the way to do it is to reorder the Ready list, which is the mechanism
+§2 describes. A session should not do it by reinterpretation.
+
+## What BL-066 leaves for the next session
+
+1. **A save pass can write itself out and cannot read itself back in.** That
+   asymmetry is deliberate: `ErasedStore` has no `set`, because `set` is the
+   one member contravariant in the component's `T` and an erased one would
+   accept any component's value into any store. Loading goes through
+   `ComponentRegistry.store(def)` with a real def, so the load side needs a
+   name-to-def table — **BL-067**, and nothing owns one today. **The trap is
+   that the write side works**, so a session could build an entire serialiser
+   before meeting the missing half.
+
+2. **`@ts-expect-error` suppresses the compile error and still runs the code.**
+   This session's first draft wrote `erased.set(entity, at(1))` under one; it
+   typechecked *and wrote a component*, making the next assertion in the same
+   test claim the opposite of the truth. Read the property, do not call the
+   method. Every existing use in `EventBus.test.ts` happens to be runtime-safe,
+   which is why nobody had met this.
+
+3. **`pnpm typecheck` fails on arrival in a fresh container, and it is not the
+   repository's fault.** `packages/*/node_modules` are absent, so `tsc`
+   resolves from a hoisted newer TypeScript and reports `TS5101 Option
+   'baseUrl' is deprecated` plus two missing `@types` entries — on `main`,
+   before any edit. **Run `pnpm install --frozen-lockfile` first.** It clears
+   all of it. Do not file this as a repository defect and do not "fix"
+   `tsconfig.json`; the error names a real option and reads exactly like a
+   genuine problem.
+
+4. **A type-level obstacle recorded in a backlog note deserves one check
+   before it is believed.** BL-066's own notes said an enumerator must be lossy
+   or assertion-ridden because TypeScript lacks existential types. True — and
+   it only bites if a *caller* needs the value type. Neither of the two named
+   callers does. Carry the habit to **BL-065**, but not the conclusion: that
+   one is about def identity rather than component values, so the same argument
+   may well not apply.
+
+5. **`ComponentStore.ts` is 631 lines against a 500-line hard limit, and it was
+   already over at 547 before this task.** Nothing enforces it — no `max-lines`
+   rule exists — which is how it drifted 30% past. **BL-068.** If you are about
+   to add to that file, the split probably has to come first.
 
 ---
 
-## Previous status (IDLE) — retained because its handoff notes are still current
+### Still-current notes carried forward from the previous IDLE state
 
-No task in progress. **BL-060 is complete** (2026-08-25) — `World.destroyEntity`
-now calls `ComponentRegistry.removeEntity` before delegating to the allocator,
-so a destroyed entity's slots are gone from every store at the moment of
-destruction. Both acceptance criteria met; 334/334 node tests, was 328. See
-`34_DEVELOPMENT_LOG.md` 2026-08-25 (BL-060) — its **Surprises** are
-load-bearing.
+**BL-060 is complete** (2026-08-25) — `World.destroyEntity` now calls
+`ComponentRegistry.removeEntity` before delegating to the allocator, so a
+destroyed entity's slots are gone from every store at the moment of
+destruction. See `34_DEVELOPMENT_LOG.md` 2026-08-25 (BL-060) — its
+**Surprises** are load-bearing.
 
 **BL-064 is complete** (2026-08-24) and the query-budget assertion is reliable
 again, but the caveat it left still stands: on this container the 0.15 ms
@@ -63,24 +102,6 @@ re-tune the sampling — move to the in-process control (decision 0023).
 **There is a tick.** `World.step(dt)` advances it, runs `SYSTEM_ORDER`, and
 drains the deferred event queue. `SYSTEM_ORDER` is still empty, so a step is a
 no-op with a clock.
-
-## Next action for an agent
-
-The topmost unblocked task in Phase 0's Ready list, per
-`AI_DEVELOPMENT_WORKFLOW.md` §2.
-
-**Read the file, do not trust this line.** As of this session `BL-056` still
-sits at the top of Ready and is still **Phase 1**, so it is still not a
-candidate under the workflow's phase discipline — seventh session running.
-After it, the Phase-0 items in list order are **BL-066** (new, filed by this
-session), **BL-062**, **BL-063**, **BL-065**, then **BL-008** (the fixed-timestep
-game loop, `M`, and the first one that is a feature rather than a cleanup).
-
-Four `S` cleanups in a row ahead of the loop is worth a moment's thought rather
-than an automatic descent: **BL-008 is the item the phase is actually for**, and
-none of the four blocks it. If a session has the budget for an `M`, taking
-BL-008 and leaving the cleanups is a defensible reading of "topmost unblocked" —
-but say so in the log, because the workflow's default is list order.
 
 ## What BL-060 leaves for the next session
 

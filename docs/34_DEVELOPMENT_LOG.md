@@ -34,6 +34,145 @@ What was added, and what it protects.
 
 ---
 
+## 2026-08-29 — BL-066 `ComponentRegistry` gains a value-erased store enumerator
+
+**Type:** feature
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~1h
+
+### What changed
+
+`ComponentRegistry.stores(): IterableIterator<ErasedStore>` — the enumerator
+BL-060 asked about and did not need. `ErasedStore` is a new exported interface
+carrying `def`, `size`, `version`, `get(entity): unknown` and `remove`; the
+registry's internal map is typed at it rather than at the narrower
+`EntityScopedStore` BL-060 introduced, and the field is renamed `storesByDef`
+so the method can take the name. Nothing else changed shape:
+`ComponentStore`, `EntityAllocator`, `Query` and `World` are untouched.
+
+Both acceptance criteria met. The enumerator carries more than `remove`, as
+the criterion asked. The `as` count in `ComponentStore.ts` is **unchanged at
+one** — the same downcast in `store()` that was already there.
+
+### Why it was done this way
+
+BL-066's own notes framed the task as blocked by a language limitation, and
+that framing is what the work had to get past. TypeScript has no existential
+types, so an enumerator whose element type mentions a component's `T` cannot
+be written; every widening either loses the value type or forces an assertion
+at each call site.
+
+That is true. **It does not bind here, because neither caller reads `T`.** A
+debug overlay (`13`) wants a name and a count. A save pass (`23`) wants to
+write the values *out*, and `04` §4.3 makes components plain serialisable
+data — so serialising one is `structuredClone`-shaped work on an opaque
+value: the serialiser copies, it never branches on the type. `unknown` is the
+honest type for that rather than a lossy one.
+
+Once that is seen, everything follows mechanically. Every member of
+`ErasedStore` is **covariant** in `T` — `ComponentDef<T>` widens to
+`ComponentDef<unknown>` because the brand property is optional, and
+`T | undefined` widens to `unknown` on `get` — so `ComponentStore<T>`
+satisfies the interface *structurally*, for every `T`, with no assertion. The
+"assertion at each call site" the notes predicted never appears, at any call
+site, including the two written as tests.
+
+**The exclusion of `set` is the decision, not an omission.** `set` is the one
+contravariant member: an erased `set(entity, value: unknown)` would accept an
+`Owned` value into the `Transform` store with the compiler's blessing, which
+is exactly the confusion the `componentValue` brand exists to prevent,
+reintroduced one level up. It would also need an assertion inside
+`ComponentStore`, breaking the second criterion. See decision 0027.
+
+Iteration order is insertion order — `Map`'s guarantee — which is the order
+stores were first *requested*. That is deterministic within a run and **not
+stable across runs**, since it depends on which system touched which component
+first, so the doc tells a save format to key on `def.name`. Sorting was left
+to the call site rather than done here, because a debug overlay walking these
+every frame should not pay for a sort a save pass needs once.
+
+### Surprises
+
+**1. The item's stated blocker was a true statement that answered a different
+question.** "An enumerator's element type cannot mention `T`" is correct, and
+the inference drawn from it — that any enumerator must therefore be lossy or
+assertion-ridden — only holds if some caller *needs* `T`. Neither does. The
+generalisable form: when a type-level obstacle is recorded in a backlog note,
+check what the callers actually consume before treating it as settled. This is
+worth carrying to **BL-065**, which is the same widening one level down — and
+where the same reasoning does *not* obviously apply, because `QueryCache` is
+about identity rather than values.
+
+**2. `@ts-expect-error` on a method call still calls the method.** The first
+draft of the "no way to write through the erased surface" case was
+`erased.set(entity, at(1))` under a `@ts-expect-error`. It typechecked, and it
+would have *written a component at runtime* — `erased` is a real
+`ComponentStore` under the erased type — making the following assertion
+(`remove` returns `false`) assert the opposite of what the test claimed. The
+directive suppresses a compile error; it does not stop emission. The fix is to
+read the property rather than call it. `EventBus.test.ts`'s uses are all
+statements whose runtime effect is harmless, so the trap had not been met
+before.
+
+**3. `pnpm typecheck` failed on arrival for a reason that was not the
+repository's.** `packages/*/node_modules` were absent in this container, so
+`tsc` resolved from a hoisted newer TypeScript and reported `TS5101 Option
+'baseUrl' is deprecated` plus two missing `@types` entries — on `main`, before
+any edit. `pnpm install --frozen-lockfile` fixed it completely. Worth knowing
+because the failure names a `tsconfig.json` option and reads exactly like a
+repository defect. **It is not one, and it should not be filed as one.**
+
+**4. The file-length limit is not enforced and had already drifted.**
+`ComponentStore.ts` was 547 lines before this task against `CLAUDE.md`'s
+500-line hard limit, and is 631 after. Nothing checks it. The prose in this
+task's additions was tightened once on discovering that, but a real fix is a
+file split, which touches every importer and is not something to ride along
+with a feature — BL-068.
+
+### Tests
+
+8 cases in `ComponentStore.test.ts`, written as the two **real callers**
+rather than as unit pokes on the new members:
+
+- A save-shaped walk that builds `{name, entries}` per store, sorts by name as
+  the doc instructs, and asserts the result survives `structuredClone` — which
+  is what makes the `unknown` erasure demonstrably type-level rather than
+  lossy. No cast anywhere in it.
+- A debug-overlay-shaped walk over `name`/`size`/`version`.
+- Enumeration order made concrete: two registries requesting the same two
+  components in opposite orders enumerate in opposite orders. This is the
+  evidence for the "key on `def.name`" instruction rather than a restatement
+  of it.
+- Liveness inherited rather than restated: a handle destroyed behind the
+  store's back is skipped by `entities()` and reads `undefined` through the
+  erased `get`, while `size` still counts its unpruned slot. A save pass that
+  serialised dead entities would write garbage a load pass would resurrect.
+- Two `@ts-expect-error` property reads pinning the absence of `set` and
+  `prune`. If either is ever added to `ErasedStore`, the directives go unused
+  and the file stops compiling.
+
+342 pass / 0 fail, was 334. `pnpm lint`, `pnpm lint:rules`, `pnpm typecheck`
+and `pnpm format:check` all clean.
+
+**On the verify block:** `pnpm test` is `pnpm test:node`, and `pnpm sim
+--ticks 20000 --assert-hash` and `pnpm build && pnpm check:bundle` still do
+not exist (BL-014, BL-018). That is **BL-062**, still open, and this is the
+sixth entry to have to say so. The query-budget flake BL-064 warns about did
+not appear in any run this session.
+
+### Follow-ups
+
+- **BL-067** — a save *load* pass needs a name-to-def table, and nothing owns
+  one. The write side works through `stores()`; the read side cannot, because
+  `ErasedStore` has no `set`. The trap: a session could build an entire
+  serialiser before meeting the missing half.
+- **BL-068** — `ComponentStore.ts` is 631 lines against a 500-line hard limit,
+  and the limit is not lint-enforced.
+- Decision **0027** records the erasure and the `set` exclusion.
+
+---
+
 ## 2026-08-25 — BL-060 `World.destroyEntity` must reach the component stores
 
 **Type:** fix
