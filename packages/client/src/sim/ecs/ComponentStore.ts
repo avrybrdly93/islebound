@@ -176,6 +176,61 @@ export interface EntityScopedStore {
   remove(entity: EntityId): boolean;
 }
 
+/**
+ * A store seen without its value type — what {@link ComponentRegistry.stores}
+ * yields (BL-066).
+ *
+ * ## Why this can exist, when the obvious argument says it cannot
+ *
+ * BL-060's handoff recorded the constraint: TypeScript has no existential
+ * types, so an enumerator whose element type mentions the component's `T`
+ * cannot be written, and every widening either loses the value type or adds an
+ * assertion per call site. True — and not the end of it, because **neither
+ * caller BL-066 names needs `T`.** A debug overlay (`13`) wants a name and a
+ * count. A save pass (`23`) wants to write the values *out*, and `04` §4.3
+ * makes components plain serialisable data, so serialising one is
+ * `structuredClone`-shaped work on an opaque value: the serialiser copies, it
+ * never branches on the type. `unknown` is the honest type for that, not a
+ * lossy one.
+ *
+ * Every member below is covariant in `T` — `ComponentDef<T>` widens to
+ * `ComponentDef<unknown>` because the brand is optional, and `T | undefined`
+ * widens to `unknown` on `get` — so a `ComponentStore<T>` satisfies this
+ * **structurally, for every `T`, with no assertion**. That is what makes
+ * BL-066's second criterion (the `as` count must not rise) satisfiable rather
+ * than merely aspirational.
+ *
+ * ## The absence of `set` is the load-bearing half
+ *
+ * `set` is *contravariant* in `T`, so an erased `set(entity, value: unknown)`
+ * would let a caller write a `Velocity` into the `Transform` store with the
+ * compiler's blessing — the confusion the `componentValue` brand exists to
+ * prevent, reintroduced one level up. It would also need an assertion inside
+ * `ComponentStore`, breaking the second criterion.
+ *
+ * The consequence shapes `23`: **a save pass can write itself out through this
+ * interface but cannot read itself back in through it.** Loading goes through
+ * {@link ComponentRegistry.store} with a real `ComponentDef<T>`, which means
+ * the load side needs a name-to-def table that content code owns. Nothing
+ * loads anything yet; filed as BL-067.
+ */
+export interface ErasedStore extends EntityScopedStore {
+  /** The component this store holds. `def.name` is the save key and debug label. */
+  readonly def: ComponentDef<unknown>;
+
+  /** Entries held, live and not-yet-pruned alike — see {@link ComponentStore.size}. */
+  readonly size: number;
+
+  /** Membership/order mutation counter — see {@link ComponentStore.version}. */
+  readonly version: number;
+
+  /** This entity's component as an opaque value, or `undefined`. */
+  get(entity: EntityId): unknown;
+
+  /** Live entities with this component, ascending by index. */
+  entities(): IterableIterator<EntityId>;
+}
+
 /** Sentinel for "this index has no component here". */
 const ABSENT = -1;
 
@@ -454,7 +509,12 @@ export class ComponentStore<T> implements Store<T> {
  * {@link registerName} instead, where the error can say which name.
  */
 export class ComponentRegistry {
-  private readonly stores = new Map<ComponentDef<unknown>, EntityScopedStore>();
+  // Typed `ErasedStore` rather than `unknown` so that both the destroy
+  // fan-out (BL-060) and the enumerator (BL-066) can be written without an
+  // assertion. Every member of that interface is covariant in the component's
+  // `T`, so a `ComponentStore<T>` satisfies it structurally; see its doc for
+  // why `set` is not among them.
+  private readonly storesByDef = new Map<ComponentDef<unknown>, ErasedStore>();
 
   private readonly names = new Map<string, ComponentDef<unknown>>();
 
@@ -468,7 +528,7 @@ export class ComponentRegistry {
 
   /** Number of stores created so far. */
   get storeCount(): number {
-    return this.stores.size;
+    return this.storesByDef.size;
   }
 
   /**
@@ -480,7 +540,7 @@ export class ComponentRegistry {
    */
   store<T>(def: ComponentDef<T>): ComponentStore<T> {
     const erased: ComponentDef<unknown> = def;
-    const existing = this.stores.get(erased);
+    const existing = this.storesByDef.get(erased);
     if (existing !== undefined) {
       // Safe by construction: `stores` is written only below, keyed by the
       // very def whose `T` the value was built for, and `ComponentDef<T>` is
@@ -492,13 +552,37 @@ export class ComponentRegistry {
     }
     this.registerName(def);
     const created = new ComponentStore<T>(this.allocator, def);
-    this.stores.set(erased, created);
+    this.storesByDef.set(erased, created);
     return created;
   }
 
   /** Whether a store has been created for this def. */
   has<T>(def: ComponentDef<T>): boolean {
-    return this.stores.has(def);
+    return this.storesByDef.has(def);
+  }
+
+  /**
+   * Every store this registry owns, without their value types (BL-066).
+   *
+   * For the two callers that must walk *all* stores rather than reach one by
+   * def — a save pass (`23`) serialising each store's entries, a debug overlay
+   * (`13`) counting them. Both sit outside this class and so cannot do what
+   * {@link removeEntity} does, which is iterate the map from inside it.
+   *
+   * **Read-only, and {@link ErasedStore} explains why that is not a hedge**:
+   * its members are covariant in the component's `T`, so neither this method
+   * nor any caller needs an assertion, and `set` is contravariant and so
+   * absent.
+   *
+   * Iteration order is insertion order — `Map`'s guarantee — which is the
+   * order stores were first *requested*, so it is deterministic within a run
+   * and **not stable across runs**: it depends on which system touched which
+   * component first. A save format must key on `def.name` and must not rely on
+   * this order. Sorting by name belongs at the call site that needs it, not
+   * here, where it would cost every debug-overlay frame a sort it does not.
+   */
+  *stores(): IterableIterator<ErasedStore> {
+    yield* this.storesByDef.values();
   }
 
   /**
@@ -528,7 +612,7 @@ export class ComponentRegistry {
    */
   removeEntity(entity: EntityId): number {
     let removed = 0;
-    for (const store of this.stores.values()) {
+    for (const store of this.storesByDef.values()) {
       if (store.remove(entity)) removed += 1;
     }
     return removed;
