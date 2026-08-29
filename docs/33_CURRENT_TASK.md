@@ -4,7 +4,48 @@
 
 ---
 
-## Status: IDLE
+## Status: IN_PROGRESS
+
+## Current task
+**BL-066** — `ComponentRegistry` still exposes no way to enumerate its stores
+- **Phase:** 0
+- **Started:** 2026-08-29
+- **Branch:** claude/sharp-lovelace-nr6dub
+- **Docs read:** AI_DEVELOPMENT_WORKFLOW, 32, 33, 34, 35, 04, 05, 06, 07
+- **Estimated size:** S
+
+**Why this one and not BL-008.** The previous handoff asked the question
+explicitly: four `S` cleanups sit ahead of the `M` the phase is actually for,
+and taking BL-008 instead would be "a defensible reading". It is not the
+reading `AI_DEVELOPMENT_WORKFLOW.md` §2 gives, which is unusually direct —
+*"The topmost unblocked task in the current phase's Ready list. Not the most
+interesting one — the topmost one; the ordering is how the human steers."*
+BL-056 is Phase 1 and so out under phase discipline; BL-066 is the topmost
+Phase-0 item. Taking it.
+
+### Plan
+1. Establish the baseline (334/334 before any change).
+2. Decide the shape: an enumerator with a stated erased element type, or a
+   documented refusal. The deciding question is what the two named callers
+   actually need — a save pass (`23`) and a debug overlay (`13`).
+3. Implement, with no new `as` in `ComponentStore.ts` (criterion 2).
+4. Tests, including one that would fail if the erased surface let a caller
+   write through it.
+5. Docs: 32, 33, 34, and 40 if the choice is architecturally significant.
+
+### Progress
+- [x] Step 1 — baseline 334/334
+- [ ] Step 2
+- [ ] Step 3
+- [ ] Step 4
+- [ ] Step 5
+
+### Blockers
+- None
+
+---
+
+## Previous status (IDLE) — retained because its handoff notes are still current
 
 No task in progress. **BL-060 is complete** (2026-08-25) — `World.destroyEntity`
 now calls `ComponentRegistry.removeEntity` before delegating to the allocator,

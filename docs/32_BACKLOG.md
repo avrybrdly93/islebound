@@ -39,7 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-*(nothing — pick the topmost unblocked task from Ready)*
+- **BL-066** — `ComponentRegistry` still exposes no way to enumerate its stores (claimed 2026-08-29; topmost unblocked Phase-0 item per `AI_DEVELOPMENT_WORKFLOW.md` §2 — BL-056 above it is Phase 1)
 
 ---
 
