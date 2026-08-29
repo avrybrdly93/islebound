@@ -39,7 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-- **BL-066** — `ComponentRegistry` still exposes no way to enumerate its stores (claimed 2026-08-29; topmost unblocked Phase-0 item per `AI_DEVELOPMENT_WORKFLOW.md` §2 — BL-056 above it is Phase 1)
+*(nothing — pick the topmost unblocked task from Ready)*
 
 ---
 
@@ -63,13 +63,31 @@ Current phase: **Phase 0 — Foundation**
   - [x] A component added or removed mid-tick is reflected, not served from a stale cache — invalidation is **version-keyed, not tick-keyed**; a per-tick cache satisfies `04` §4.3's wording and fails this criterion outright. See decision 0024
 - **Notes:** Split out of BL-007 on 2026-08-18; **done 2026-08-22**, see `34_DEVELOPMENT_LOG.md`. This slice carries the performance criterion, because it is the only one of the three whose cost the criterion is actually about. **BL-008 and BL-014 named `BL-007` as a dependency when BL-007 meant all three slices; both now name BL-059** — which is now done, so **both are unblocked**, as are BL-060 and BL-061. Landed alongside it: a `version` counter on `ComponentStore` and on `EntityAllocator`, which BL-058's handoff note 5 named as part of this task.
 
-### BL-066 — `ComponentRegistry` still exposes no way to enumerate its stores
+### BL-066 — `ComponentRegistry` still exposes no way to enumerate its stores — **DONE 2026-08-29**
 - **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** 04
 - **Description:** BL-060 asked whether the destroy fan-out needed a `ComponentRegistry.stores()` iterator and the answer turned out to be no: `removeEntity` iterates the map from *inside* the class, so nothing had to be exported and the heterogeneous map stayed sealed behind its one existing cast. That is the right answer for that task and it leaves the original question open for the next caller. A save/load pass (`23`) has to walk every store to serialise it, and a debug overlay (`13`) has to walk every store to count entries — neither can be written from inside `ComponentRegistry`.
 - **Acceptance criteria:**
-  - [ ] Either an enumerator exists with a stated type for the erased element (the `EntityScopedStore` shape BL-060 added is one starting point, but a serialiser needs more than `remove`), or the registry documents that per-store access is by def only and names what a save pass should do instead
-  - [ ] Whichever is chosen, the number of `as` assertions in `ComponentStore.ts` does not go up
-- **Notes:** Filed 2026-08-25 by BL-060, which deliberately did not need it. Not urgent: nothing outside the registry wants to enumerate stores today. Note the constraint that makes it non-trivial — TypeScript has no existential types, so an enumerator whose element type mentions the component's `T` cannot be expressed, and every widening either loses the value type or adds an assertion at each call site. BL-065 is the same family of problem one level down.
+  - [x] Enumerator exists — `ComponentRegistry.stores(): IterableIterator<ErasedStore>`, with `ErasedStore` carrying `def`, `size`, `version`, `get` and `remove`. It is more than `remove`, as the criterion asks, and the element type is stated rather than `unknown`
+  - [x] `as` count in `ComponentStore.ts` unchanged at **one** — the same downcast in `store()` that was there before. Nothing in the new code needs an assertion, and neither does either caller
+- **Notes:** Filed 2026-08-25 by BL-060, which deliberately did not need it. **Done 2026-08-29**, see `34_DEVELOPMENT_LOG.md` and decision 0027. The constraint this item recorded — no existential types, so every widening loses the value type or adds an assertion — turned out to be **true but not binding here**, because neither named caller needs `T`: a debug overlay counts, and a serialiser copies an opaque value rather than branching on its type. Widening to `unknown` therefore loses nothing either one uses, and every member of the erased interface is covariant in `T`, so `ComponentStore<T>` satisfies it structurally with no assertion. **`set` is deliberately absent** — it is the one contravariant member, and an erased `set` would accept any component's value into any store. Two `@ts-expect-error` reads pin its absence. **BL-065 is the same family of problem one level down and this does not solve it**: `QueryCache.query` takes `ComponentDef<never>`, the bottom, where the fix is the *top* — the same direction of widening as here, and still its own task.
+
+### BL-067 — A save *load* pass needs a name-to-def table, and nothing owns one
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-066 · **Docs:** 04, 23
+- **Description:** BL-066's `ComponentRegistry.stores()` lets a save pass write every store out, keyed on `def.name`. It cannot read one back in: `ErasedStore` has no `set`, deliberately, because `set` is contravariant in the component's `T` and an erased one would accept any component's value into any store. So loading has to go through `ComponentRegistry.store(def)` with the real `ComponentDef<T>` in hand — which means something has to map the `name` in the save file back to the def object, and nothing does. `defineComponent` returns a fresh object each call and registers nothing globally; the registry's own `names` map is private and only ever holds defs somebody already had.
+- **Acceptance criteria:**
+  - [ ] A save file's `"Transform"` resolves to the `ComponentDef<Transform>` the running code uses, by a stated mechanism
+  - [ ] An unknown name in a save file is a diagnosable error, not a silently dropped component — a save written by a newer build is the ordinary case, not the exotic one
+  - [ ] Whatever owns the table is somewhere content code can register into without `sim/` importing `content/` (`04` §5)
+- **Notes:** Filed 2026-08-29 by BL-066, which hit the asymmetry and deliberately did not fix it — nothing loads anything yet, and inventing a registration mechanism without a save format to serve is a guess. **Not urgent, and it should not be taken before `23` has a shape.** Note the shape of the trap: the write side works today, so a session could build a whole serialiser and only discover the load side is missing at the end.
+
+### BL-068 — `ComponentStore.ts` is 631 lines against a 500-line hard limit
+- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** 05, 06
+- **Description:** `CLAUDE.md` sets files at 300 lines soft, 500 hard. `ComponentStore.ts` was already over at 547 before BL-066 and is 631 after it. It holds four things: `ComponentDef`/`defineComponent`, the `Store`/`EntityScopedStore`/`ErasedStore` interfaces, `ComponentStore`, and `ComponentRegistry`. The registry is the obvious seam — it is a different concern (which stores exist) from the store (what one holds), and it is what `World.store` delegates to.
+- **Acceptance criteria:**
+  - [ ] `ComponentStore.ts` is under the hard limit, and so is anything split out of it
+  - [ ] No barrel file is introduced (`CLAUDE.md`), and the `@sim/*` import paths in every consumer are updated
+  - [ ] The module comments move with the code they describe rather than being cut — most of this file's length is the record of *why*, and losing that to a line count would be the wrong trade
+- **Notes:** Filed 2026-08-29 by BL-066 rather than done inline: `35` §3 forbids expanding scope, and a file split touches every importer, which is exactly the kind of change that should not ride along with a feature. **The limit is not lint-enforced** — nothing checks it, which is why the file drifted 30% past it without anyone noticing. Consider whether the split should come with the `max-lines` rule that would have caught it, or whether an unenforced convention is the intent.
 
 ### BL-062 — The verify block names three commands that do not exist
 - **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
