@@ -93,7 +93,9 @@
  */
 
 import { EventBus, type EventMap } from '@core/EventBus';
-import { ComponentRegistry, type ComponentDef, type ComponentStore } from '@sim/ecs/ComponentStore';
+import type { ComponentDef } from '@sim/ecs/ComponentDef';
+import { ComponentRegistry } from '@sim/ecs/ComponentRegistry';
+import type { ComponentStore } from '@sim/ecs/ComponentStore';
 import { EntityAllocator, type EntityId } from '@sim/ecs/EntityAllocator';
 import { QueryCache, type AnyComponentDef } from '@sim/ecs/Query';
 import type { RegisteredSystem } from '@sim/systems/order';

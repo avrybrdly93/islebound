@@ -69,7 +69,9 @@
  * tick number to answer that.
  */
 
-import type { ComponentDef, ComponentRegistry, ComponentStore } from '@sim/ecs/ComponentStore';
+import type { ComponentDef } from '@sim/ecs/ComponentDef';
+import type { ComponentRegistry } from '@sim/ecs/ComponentRegistry';
+import type { ComponentStore } from '@sim/ecs/ComponentStore';
 import type { EntityAllocator, EntityId } from '@sim/ecs/EntityAllocator';
 
 /** A def with its value type erased, which is all a query needs. */

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { ComponentRegistry, type ComponentDef, defineComponent } from '@sim/ecs/ComponentStore';
+import { type ComponentDef, defineComponent } from '@sim/ecs/ComponentDef';
+import { ComponentRegistry } from '@sim/ecs/ComponentRegistry';
 import { EntityAllocator, type EntityId, indexOf } from '@sim/ecs/EntityAllocator';
 import { QueryCache, type AnyComponentDef } from '@sim/ecs/Query';
 

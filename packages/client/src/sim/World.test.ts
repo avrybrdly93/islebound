@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { ComponentRegistry, defineComponent } from '@sim/ecs/ComponentStore';
+import { defineComponent } from '@sim/ecs/ComponentDef';
+import { ComponentRegistry } from '@sim/ecs/ComponentRegistry';
 import { EntityAllocator, indexOf } from '@sim/ecs/EntityAllocator';
 import { SYSTEM_ORDER, type RegisteredSystem } from '@sim/systems/order';
 import { World } from '@sim/World';

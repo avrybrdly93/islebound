@@ -1,12 +1,12 @@
 /**
- * Component storage: `ComponentDef<T>`, the sparse-set `ComponentStore<T>`,
- * and the registry that is `World.store(def)` (BL-058).
+ * The sparse-set `ComponentStore<T>` (BL-058), one particular implementation
+ * of the `Store<T>` interface in `ComponentDef.ts`.
  *
- * `04` §4.3 pins the interface in one line —
- * `interface Store<T> { has(e); get(e); set(e, v); remove(e); entities(); }` —
- * and the paragraph under it pins the data model: components are **plain
- * serialisable data**, no methods, no class instances, no references to other
- * objects, only `EntityId`s. Everything here follows from those two.
+ * `04` §4.3's data model — components are **plain serialisable data**, no
+ * methods, no class instances, no references to other objects, only
+ * `EntityId`s — is what makes the layout below possible. The declarations it
+ * implements live in `ComponentDef.ts`; which stores exist is
+ * `ComponentRegistry.ts`. BL-068 split the three apart.
  *
  * ## Why a sparse set
  *
@@ -79,7 +79,7 @@
  *
  * What changed with BL-060 is that a store reached through a `World` is no
  * longer in that position. `World.destroyEntity` calls
- * {@link ComponentRegistry.removeEntity}, which removes the entity from every
+ * `ComponentRegistry.removeEntity`, which removes the entity from every
  * store it owns **before** the handle is destroyed — so under a `World` the
  * slot is gone at the moment of destruction and there is nothing to sweep.
  *
@@ -95,142 +95,8 @@
  * `RngState`.
  */
 
+import type { ComponentDef, Store } from '@sim/ecs/ComponentDef';
 import { type EntityAllocator, type EntityId, indexOf } from '@sim/ecs/EntityAllocator';
-
-/**
- * Phantom brand carrying a component's value type on its definition.
- *
- * `07` §2.1 uses exactly this shape for branded IDs. It is a type-level
- * marker: `declare const` emits nothing, the property is optional and never
- * assigned, and `structuredClone` of a def is not something anything does.
- * Without it `ComponentDef<Transform>` and `ComponentDef<Velocity>` are the
- * same type and `store()` would hand back the wrong store with no complaint.
- */
-declare const componentValue: unique symbol;
-
-/**
- * The identity of a component type.
- *
- * A def is a *name plus a type*, and deliberately not a schema, a default
- * value or a factory. `04` §4.3 says components are plain serialisable data;
- * anything richer here would be a place to put a method, and the first method
- * on a component is the end of `structuredClone` working.
- *
- * `name` is for saves, dev tooling and error messages. It is not what the
- * registry keys on — the def object's identity is (see
- * {@link ComponentRegistry}) — so two defs with the same name are two
- * different components, and that is a bug the {@link defineComponent} guard
- * catches rather than a feature.
- */
-export interface ComponentDef<T> {
-  readonly name: string;
-  readonly [componentValue]?: T;
-}
-
-/**
- * Declares a component type.
- *
- * ```ts
- * interface Transform { x: number; y: number; z: number }
- * const Transform = defineComponent<Transform>('Transform');
- * ```
- *
- * @throws if `name` is empty — a nameless component produces error messages
- *   and save keys that name nothing, and the mistake is silent otherwise.
- */
-export function defineComponent<T>(name: string): ComponentDef<T> {
-  if (name.length === 0) {
-    throw new Error('defineComponent: a component definition needs a non-empty name');
-  }
-  return { name };
-}
-
-/**
- * The read/write surface of a component store, as `04` §4.3 declares it.
- *
- * Separate from {@link ComponentStore} so a system can be written against the
- * capability rather than the implementation, and so a future store with a
- * different layout (a tag store with no values, a chunked one) is a drop-in.
- */
-export interface Store<T> {
-  has(entity: EntityId): boolean;
-  get(entity: EntityId): T | undefined;
-  set(entity: EntityId, value: T): void;
-  remove(entity: EntityId): boolean;
-  entities(): IterableIterator<EntityId>;
-}
-
-/**
- * The part of a store that does not mention its value type.
- *
- * {@link ComponentRegistry} holds one store per component and cannot name
- * their differing `T`s in a single map, so the map's value type was `unknown`
- * and every read out of it needed an assertion. BL-060 needs to call `remove`
- * across *all* of them, and `remove` is precisely a method that does not read
- * `T` — so the map is typed as this instead. `ComponentRegistry.removeEntity`
- * then needs no assertion at all, and the one that remains in
- * {@link ComponentRegistry.store} is unchanged in kind: still a single
- * downcast, in the one place that owns the map.
- */
-export interface EntityScopedStore {
-  remove(entity: EntityId): boolean;
-}
-
-/**
- * A store seen without its value type — what {@link ComponentRegistry.stores}
- * yields (BL-066).
- *
- * ## Why this can exist, when the obvious argument says it cannot
- *
- * BL-060's handoff recorded the constraint: TypeScript has no existential
- * types, so an enumerator whose element type mentions the component's `T`
- * cannot be written, and every widening either loses the value type or adds an
- * assertion per call site. True — and not the end of it, because **neither
- * caller BL-066 names needs `T`.** A debug overlay (`13`) wants a name and a
- * count. A save pass (`23`) wants to write the values *out*, and `04` §4.3
- * makes components plain serialisable data, so serialising one is
- * `structuredClone`-shaped work on an opaque value: the serialiser copies, it
- * never branches on the type. `unknown` is the honest type for that, not a
- * lossy one.
- *
- * Every member below is covariant in `T` — `ComponentDef<T>` widens to
- * `ComponentDef<unknown>` because the brand is optional, and `T | undefined`
- * widens to `unknown` on `get` — so a `ComponentStore<T>` satisfies this
- * **structurally, for every `T`, with no assertion**. That is what makes
- * BL-066's second criterion (the `as` count must not rise) satisfiable rather
- * than merely aspirational.
- *
- * ## The absence of `set` is the load-bearing half
- *
- * `set` is *contravariant* in `T`, so an erased `set(entity, value: unknown)`
- * would let a caller write a `Velocity` into the `Transform` store with the
- * compiler's blessing — the confusion the `componentValue` brand exists to
- * prevent, reintroduced one level up. It would also need an assertion inside
- * `ComponentStore`, breaking the second criterion.
- *
- * The consequence shapes `23`: **a save pass can write itself out through this
- * interface but cannot read itself back in through it.** Loading goes through
- * {@link ComponentRegistry.store} with a real `ComponentDef<T>`, which means
- * the load side needs a name-to-def table that content code owns. Nothing
- * loads anything yet; filed as BL-067.
- */
-export interface ErasedStore extends EntityScopedStore {
-  /** The component this store holds. `def.name` is the save key and debug label. */
-  readonly def: ComponentDef<unknown>;
-
-  /** Entries held, live and not-yet-pruned alike — see {@link ComponentStore.size}. */
-  readonly size: number;
-
-  /** Membership/order mutation counter — see {@link ComponentStore.version}. */
-  readonly version: number;
-
-  /** This entity's component as an opaque value, or `undefined`. */
-  get(entity: EntityId): unknown;
-
-  /** Live entities with this component, ascending by index. */
-  entities(): IterableIterator<EntityId>;
-}
-
 /** Sentinel for "this index has no component here". */
 const ABSENT = -1;
 
@@ -490,142 +356,5 @@ export class ComponentStore<T> implements Store<T> {
       this.mutations += 1;
     }
     return dropped;
-  }
-}
-
-/**
- * Owns one {@link ComponentStore} per {@link ComponentDef}, created on first
- * use — the `store<T>(def: ComponentDef<T>): Store<T>` accessor of `04` §4.3.
- *
- * Standing alone rather than as a method on `World` because there is no
- * `World` yet: BL-007's handoff note 6 records that `04` §4.3 sketches one
- * holding `tick`, the stores, `query`, `events` and `step`, and that BL-058
- * and BL-059 build two of its pieces. When it is assembled (BL-061),
- * `World.store` delegates here rather than reimplementing it.
- *
- * Keyed on the **def object's identity**, not on `def.name`: two defs are two
- * components even if somebody names them the same, and identity is the only
- * key that cannot be spoofed by a string. A name collision is caught by
- * {@link registerName} instead, where the error can say which name.
- */
-export class ComponentRegistry {
-  // Typed `ErasedStore` rather than `unknown` so that both the destroy
-  // fan-out (BL-060) and the enumerator (BL-066) can be written without an
-  // assertion. Every member of that interface is covariant in the component's
-  // `T`, so a `ComponentStore<T>` satisfies it structurally; see its doc for
-  // why `set` is not among them.
-  private readonly storesByDef = new Map<ComponentDef<unknown>, ErasedStore>();
-
-  private readonly names = new Map<string, ComponentDef<unknown>>();
-
-  private readonly allocator: EntityAllocator;
-
-  // Explicit field, not a parameter property — see ComponentStore's
-  // constructor for why they cannot be used in this repository.
-  constructor(allocator: EntityAllocator) {
-    this.allocator = allocator;
-  }
-
-  /** Number of stores created so far. */
-  get storeCount(): number {
-    return this.storesByDef.size;
-  }
-
-  /**
-   * The store for a component, created on first request.
-   *
-   * @throws if a *different* def with the same `name` already has a store —
-   *   the two would collide in a save file and in every debug view, and the
-   *   identity keying above means nothing else would notice.
-   */
-  store<T>(def: ComponentDef<T>): ComponentStore<T> {
-    const erased: ComponentDef<unknown> = def;
-    const existing = this.storesByDef.get(erased);
-    if (existing !== undefined) {
-      // Safe by construction: `stores` is written only below, keyed by the
-      // very def whose `T` the value was built for, and `ComponentDef<T>` is
-      // branded so two component types are never the same key. TypeScript has
-      // no existential types, so a heterogeneous map cannot be expressed
-      // without one assertion; `07` §10's "fix the model" has no reading that
-      // removes it. Kept to this one line, in the one place that owns the map.
-      return existing as ComponentStore<T>;
-    }
-    this.registerName(def);
-    const created = new ComponentStore<T>(this.allocator, def);
-    this.storesByDef.set(erased, created);
-    return created;
-  }
-
-  /** Whether a store has been created for this def. */
-  has<T>(def: ComponentDef<T>): boolean {
-    return this.storesByDef.has(def);
-  }
-
-  /**
-   * Every store this registry owns, without their value types (BL-066).
-   *
-   * For the two callers that must walk *all* stores rather than reach one by
-   * def — a save pass (`23`) serialising each store's entries, a debug overlay
-   * (`13`) counting them. Both sit outside this class and so cannot do what
-   * {@link removeEntity} does, which is iterate the map from inside it.
-   *
-   * **Read-only, and {@link ErasedStore} explains why that is not a hedge**:
-   * its members are covariant in the component's `T`, so neither this method
-   * nor any caller needs an assertion, and `set` is contravariant and so
-   * absent.
-   *
-   * Iteration order is insertion order — `Map`'s guarantee — which is the
-   * order stores were first *requested*, so it is deterministic within a run
-   * and **not stable across runs**: it depends on which system touched which
-   * component first. A save format must key on `def.name` and must not rely on
-   * this order. Sorting by name belongs at the call site that needs it, not
-   * here, where it would cost every debug-overlay frame a sort it does not.
-   */
-  *stores(): IterableIterator<ErasedStore> {
-    yield* this.storesByDef.values();
-  }
-
-  /**
-   * Removes `entity`'s component from every store this registry owns, and
-   * returns how many stores held one (BL-060).
-   *
-   * `World.destroyEntity` is the caller, and the **order there is
-   * load-bearing**: {@link ComponentStore.remove} refuses a dead or stale
-   * handle, so this must run *before* the allocator destroys it. Called after,
-   * every `remove` returns `false` and the entity's slots stay exactly where
-   * they were — the leak this method exists to close, with a green suite,
-   * because nothing else in the store's surface changes. `World.test.ts`
-   * asserts the order rather than only the outcome.
-   *
-   * Harmless on a handle that is already dead or was never live: every
-   * `remove` refuses it and the return is `0`. That is what lets
-   * `World.destroyEntity` call this unconditionally instead of re-asking the
-   * allocator a liveness question it is about to ask anyway.
-   *
-   * `O(stores)`, each `remove` being an O(1) swap. The sweeping alternative
-   * and why it was not taken are in {@link ComponentStore.prune}.
-   *
-   * Iterates every store rather than only those that have the entity, because
-   * nothing indexes entity → stores; building that index would cost a write
-   * per `set` to save a read per destroy, on a store count that is the number
-   * of *component types* and so is small and fixed.
-   */
-  removeEntity(entity: EntityId): number {
-    let removed = 0;
-    for (const store of this.storesByDef.values()) {
-      if (store.remove(entity)) removed += 1;
-    }
-    return removed;
-  }
-
-  private registerName<T>(def: ComponentDef<T>): void {
-    const claimed = this.names.get(def.name);
-    if (claimed !== undefined && claimed !== def) {
-      throw new Error(
-        `ComponentRegistry.store: two different component definitions are both named ` +
-          `"${def.name}". Names reach save files and debug views, so they must be unique`,
-      );
-    }
-    this.names.set(def.name, def);
   }
 }
