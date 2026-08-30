@@ -34,6 +34,93 @@ What was added, and what it protects.
 
 ---
 
+## 2026-08-30 — BL-068 Split `ComponentStore.ts` at its two seams
+
+**Type:** refactor
+**Phase:** 0
+**PR:** pushed to `main`
+**Time:** ~1h
+
+### What changed
+
+`sim/ecs/ComponentStore.ts` was 631 lines against `CLAUDE.md`'s 500-line hard
+limit. It is now three files: `ComponentDef.ts` (159) holds what a component
+*is* and what a store *offers* — the brand, `ComponentDef`, `defineComponent`,
+and the `Store`/`EntityScopedStore`/`ErasedStore` interfaces, mentioning no
+storage layout; `ComponentStore.ts` (360) holds the sparse set itself;
+`ComponentRegistry.ts` (161) holds which stores exist. `ComponentStore.test.ts`
+was **701** lines — 70 more than the source — and was split along the same
+seams into 43 / 421 / 304. No barrel file; all four consumers (`World.ts`,
+`Query.ts`, `Query.test.ts`, `World.test.ts`) import from the specific modules.
+
+Suite unchanged at **342 pass / 0 fail**, lint / typecheck / format:check
+clean.
+
+### Why it was done this way
+
+The item named the registry as "the obvious seam" and left the rest open. The
+registry alone would have worked — and left `ComponentStore.ts` at about 495
+lines, five under the hard limit and still 65% over the soft one. That is how
+the file got here in the first place, so a split that satisfies the criterion
+by a margin the next paragraph of prose erases is not a fix. The second seam is
+the vocabulary: the def and the interfaces are what every consumer imports as
+*types*, and they name no layout, so a second store implementation (`Store<T>`'s
+own doc anticipates a tag store or a chunked one) drops in beside
+`ComponentStore.ts` without touching them. Dependency direction is acyclic —
+registry → store → defs → allocator. Recorded as decision **0028**.
+
+The third acceptance criterion — comments move with the code rather than being
+cut — is the one that shaped the work, because most of this file's length *is*
+the record of why. Each section of the original header went to the file whose
+code it explains, and nothing was deleted.
+
+### Surprises
+
+1. **The test file was the bigger offender, and nothing in the item mentioned
+   it.** BL-068 was filed about a 631-line source file. Its test file was 701.
+   A session that fixed only what the item named would have left the larger
+   violation in place, in the same directory, and closed the item honestly.
+   Worth generalising: an item that names a file names the file somebody
+   *noticed*, and the thing that made it noticeable — here, that the source is
+   what gets read — is not the thing the rule is about.
+
+2. **Three more test files are over the hard limit and the rule still cannot be
+   turned on.** The item asked whether the split should come with the
+   `max-lines` rule that would have caught the drift. It cannot, today:
+   `World.test.ts` (547), `EventBus.test.ts` (533) and `Rng.test.ts` (509) are
+   over, and `Query.test.ts` (499) is one line under and will cross on the next
+   case somebody adds. Enabling the rule is therefore a change to those files,
+   not a change to the config — out of scope under `35` §3, and filed as
+   **BL-069** with the full measurement. **Nine of the fourteen files over the
+   soft limit are tests**, so a rule scoped to sources only would enforce the
+   limit precisely where it is not being broken. That distribution is the real
+   finding and it is not what the item anticipated.
+
+3. **The green suite is not the check that matters for a move.** A mechanical
+   split that drops a `describe` block or duplicates one still runs green — the
+   remaining tests pass, and nothing reports the missing ones. The count is what
+   catches it, which is why 342 was recorded at session start and asserted
+   after. It came out unchanged, but the reason it was worth measuring is that
+   the failure mode is silent.
+
+### Tests
+
+None added and none changed — this is a move, and adding a case would have made
+the count a worse check rather than a better one. The 342 existing cases were
+redistributed across three files: `defineComponent`'s three cases to
+`ComponentDef.test.ts`, the four BL-058 criterion suites and `prune` to
+`ComponentStore.test.ts`, and the registry plus BL-066's `stores()` cases to
+`ComponentRegistry.test.ts`. Each file carries the fixtures it uses; the
+four-line `Transform`/`Owned`/`at()` fixtures are repeated rather than
+extracted to a shared helper, which is decision 0028's alternative (c).
+
+### Follow-ups
+
+- **BL-069** — the 500-line limit is still unenforced, and three test files are
+  over it. Filed with the measured line counts and the source/test split.
+
+---
+
 ## 2026-08-29 — BL-066 `ComponentRegistry` gains a value-erased store enumerator
 
 **Type:** feature

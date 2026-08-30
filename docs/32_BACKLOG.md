@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-067**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-070**.
 
 **Task format:**
 
@@ -39,10 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-### BL-068 — `ComponentStore.ts` is 631 lines against a 500-line hard limit
-Claimed 2026-08-30. Topmost item in Phase 0's Ready list that is actually
-ready: BL-056 is Phase 1, and BL-067's own notes say it "should not be taken
-before `23` has a shape", which is still unmet. See `33_CURRENT_TASK.md`.
+*(nothing — pick the topmost unblocked task from Ready)*
 
 ---
 
@@ -83,14 +80,23 @@ before `23` has a shape", which is still unmet. See `33_CURRENT_TASK.md`.
   - [ ] Whatever owns the table is somewhere content code can register into without `sim/` importing `content/` (`04` §5)
 - **Notes:** Filed 2026-08-29 by BL-066, which hit the asymmetry and deliberately did not fix it — nothing loads anything yet, and inventing a registration mechanism without a save format to serve is a guess. **Not urgent, and it should not be taken before `23` has a shape.** Note the shape of the trap: the write side works today, so a session could build a whole serialiser and only discover the load side is missing at the end.
 
-### BL-068 — `ComponentStore.ts` is 631 lines against a 500-line hard limit
+### BL-068 — `ComponentStore.ts` is 631 lines against a 500-line hard limit — **DONE 2026-08-30**
 - **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** 05, 06
 - **Description:** `CLAUDE.md` sets files at 300 lines soft, 500 hard. `ComponentStore.ts` was already over at 547 before BL-066 and is 631 after it. It holds four things: `ComponentDef`/`defineComponent`, the `Store`/`EntityScopedStore`/`ErasedStore` interfaces, `ComponentStore`, and `ComponentRegistry`. The registry is the obvious seam — it is a different concern (which stores exist) from the store (what one holds), and it is what `World.store` delegates to.
 - **Acceptance criteria:**
-  - [ ] `ComponentStore.ts` is under the hard limit, and so is anything split out of it
-  - [ ] No barrel file is introduced (`CLAUDE.md`), and the `@sim/*` import paths in every consumer are updated
-  - [ ] The module comments move with the code they describe rather than being cut — most of this file's length is the record of *why*, and losing that to a line count would be the wrong trade
-- **Notes:** Filed 2026-08-29 by BL-066 rather than done inline: `35` §3 forbids expanding scope, and a file split touches every importer, which is exactly the kind of change that should not ride along with a feature. **The limit is not lint-enforced** — nothing checks it, which is why the file drifted 30% past it without anyone noticing. Consider whether the split should come with the `max-lines` rule that would have caught it, or whether an unenforced convention is the intent.
+  - [x] `ComponentStore.ts` is under the hard limit, and so is anything split out of it — three source files at **159 / 360 / 161**, and the three test files at **43 / 421 / 304**. All six under 500; two still over the 300 soft limit, which the limit permits
+  - [x] No barrel file is introduced (`CLAUDE.md`), and the `@sim/*` import paths in every consumer are updated — all four (`World.ts`, `Query.ts`, `Query.test.ts`, `World.test.ts`) import from the specific modules
+  - [x] The module comments move with the code they describe rather than being cut — each of the original header's sections went to the file whose code it explains; nothing was deleted
+- **Notes:** Filed 2026-08-29 by BL-066 rather than done inline: `35` §3 forbids expanding scope, and a file split touches every importer, which is exactly the kind of change that should not ride along with a feature. **Done 2026-08-30**, see `34_DEVELOPMENT_LOG.md` and decision **0028**. The two seams are `ComponentDef.ts` (what a component *is* and what a store *offers* — mentions no storage layout) and `ComponentRegistry.ts` (which stores exist), leaving the sparse set itself in `ComponentStore.ts`; dependency direction is acyclic, registry → store → defs → allocator. **The test file was the bigger offender and is the part a reader would not expect**: `ComponentStore.test.ts` was **701** lines, 70 more than the source, and was split along the same seams. **The suite count is the check that matters for a move** — unchanged at 342 pass / 0 fail, because a changed count means content was lost or duplicated, and neither is visible in a green run otherwise. The `max-lines` question this item raised is answered and **the answer is "not in this task"**: three test files outside the split are still over the hard limit (`World.test.ts` 547, `EventBus.test.ts` 533, `Rng.test.ts` 509), so turning the rule on today fails lint on files this task does not touch. Filed as **BL-069** with the measurement.
+
+### BL-069 — The 500-line limit is still unenforced, and three test files are over it
+- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs to read:** 06, 29
+- **Description:** `CLAUDE.md` sets files at 300 lines soft, 500 hard, and nothing checks either. That is how `ComponentStore.ts` reached 631 and its test file 701 before BL-068 split them, with no signal at any point. ESLint's built-in `max-lines` would have caught both. It cannot simply be switched on: three test files are over the hard limit today and would fail `pnpm lint` immediately.
+- **Acceptance criteria:**
+  - [ ] Either `max-lines` is enabled at the hard limit and every file is under it, or `CLAUDE.md`'s limit is restated as a convention nobody enforces and the reason is written down — not left as a number that reads like a rule
+  - [ ] If enabled, the *soft* limit is decided too: a `warn` at 300 that nothing fails on is noise unless somebody reads warnings, and this repository's lint runs in CI where nobody does
+  - [ ] Whatever is chosen, whether test files are in scope is stated explicitly — they are the files that actually overrun, and `29` has no opinion on their length
+- **Notes:** Filed 2026-08-30 by BL-068, which fixed the file it was pointed at and deliberately did not turn the rule on: `35` §3 forbids expanding scope, and enabling a lint rule that fails on three untouched files is a change to those files, not a change to the config. Measured at filing, after BL-068's split — over the hard limit: `World.test.ts` **547**, `EventBus.test.ts` **533**, `Rng.test.ts` **509**. One line under it: `Query.test.ts` **499**, which will cross on the next case somebody adds. Over the soft limit and under the hard: `allocationHarness.ts` 422, `ComponentStore.test.ts` 421, `Noise.ts` 409, `ComponentStore.ts` 360, `allocation.test.ts` 357, `PoissonDisk.test.ts` 318, `World.ts` 314, `EventBus.ts` 314, `ComponentRegistry.test.ts` 304, `Noise.test.ts` 303. **Note what that distribution says**: nine of the fourteen files over the soft limit are tests, so a rule scoped to sources only would be enforcing the limit precisely where it is not being broken.
 
 ### BL-062 — The verify block names three commands that do not exist
 - **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —

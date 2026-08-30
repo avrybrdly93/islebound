@@ -4,72 +4,81 @@
 
 ---
 
-## Status: IN_PROGRESS
+## Status: IDLE
 
-**BL-068 — `ComponentStore.ts` is 631 lines against a 500-line hard limit.**
-Phase 0 · Size S · Depends on: — · Docs to read: 05, 06.
+No task in progress. **BL-068 is complete** (2026-08-30) —
+`sim/ecs/ComponentStore.ts` was 631 lines against the 500-line hard limit and
+is now three files: `ComponentDef.ts` (159), `ComponentStore.ts` (360),
+`ComponentRegistry.ts` (161). Its test file was **701** lines and is now three:
+43 / 421 / 304. All three acceptance criteria met. Suite unchanged at
+**342 pass / 0 fail** — which is the check that matters for a move. See
+`34_DEVELOPMENT_LOG.md` 2026-08-30 (BL-068) and decision **0028**; its
+**Surprises** are load-bearing, especially items 2 and 3.
 
-## Why this task
+## Next action for an agent
 
-`AI_DEVELOPMENT_WORKFLOW.md` §2 says the topmost unblocked task in the current
-phase's Ready list. Working down it:
+The topmost unblocked task in Phase 0's Ready list, per
+`AI_DEVELOPMENT_WORKFLOW.md` §2.
 
-- **BL-056** is still **Phase 1** and so still not a candidate under phase
-  discipline — ninth session running. Unchanged.
-- **BL-067** is skipped **on its own instruction**, not on this session's
-  judgement: its notes say "**Not urgent, and it should not be taken before
-  `23` has a shape.**" `23_SAVE_SYSTEM.md` still describes no format that a
-  name-to-def table would serve, so the item's stated precondition is unmet
-  and taking it would be inventing a registration mechanism to fit a save
-  format nobody has written. The previous handoff reached the same reading.
-- **BL-068** is therefore the topmost item that is actually ready.
+**Read the file, do not trust this line.** `BL-056` still sits at the top of
+Ready and is still **Phase 1**, so it is still not a candidate under phase
+discipline — ninth session running. After it, the Phase-0 items in list order
+are **BL-067**, **BL-069** (new, filed by this session), **BL-062**,
+**BL-063**, **BL-065**, then **BL-008**.
 
-## Plan
+**BL-067 is still the one to skip, and skip it on its own instruction rather
+than on your judgement.** Its notes say "**Not urgent, and it should not be
+taken before `23` has a shape**", and `23_SAVE_SYSTEM.md` still describes no
+save format that a name-to-def table would serve. Building a registration
+mechanism with no format to serve is a guess. That makes **BL-069** the
+topmost-that-is-actually-ready — say so in the log, as this session did for
+BL-068.
 
-1. Split `sim/ecs/ComponentStore.ts` at its two natural seams into three
-   files, moving each module-comment section with the code it describes.
-2. Split `ComponentStore.test.ts` (701 lines — over the same limit, and more
-   over it than the source) along the same seams.
-3. Update the `@sim/*` imports in all four consumers. No barrel file.
-4. Verify: `pnpm lint`, `pnpm typecheck`, `pnpm test:node`. Test count must be
-   **unchanged at 342** — this is a move, so a changed count means content was
-   lost or duplicated.
-5. Decide the `max-lines` question the item raises, and record the decision
-   with the measurement behind it.
-
-## The seams, and why these two
-
-`ComponentStore.ts` holds four things (the item names them). The two seams:
-
-- **`ComponentDef.ts`** — the *vocabulary*: the `componentValue` brand,
-  `ComponentDef<T>`, `defineComponent`, and the three interfaces (`Store<T>`,
-  `EntityScopedStore`, `ErasedStore`). These are what a component *is* and
-  what a store *offers*, and they are what every consumer imports as types.
-  They mention no storage layout.
-- **`ComponentRegistry.ts`** — *which stores exist*, as against what one
-  holds. The item already identifies this as the obvious seam.
-- **`ComponentStore.ts`** keeps the sparse set itself, which is where the
-  layout, the recycled-index trap, the ascending-order trap and the
-  destroyed-handle rule all live.
-
-The dependency direction is clean and acyclic: `ComponentRegistry` → both,
-`ComponentStore` → `ComponentDef`, `ComponentDef` → `EntityAllocator` only.
-
-## Baseline at session start
-
-`pnpm lint` clean, `pnpm typecheck` clean, `pnpm test:node` **342 pass / 0
-fail / 0 todo**.
-
-## Everything below is prior handoff state, still current
-
-The standing question the previous handoffs raised is unchanged: several `S`
+The standing question the previous handoffs raised is unchanged: **six** `S`
 items sit ahead of **BL-008**, the `M` the phase is actually for, and none of
-them blocks it. If a human wants BL-008 pulled forward, the way to do it is to
-reorder the Ready list, which is the mechanism §2 describes. A session should
-not do it by reinterpretation.
+them blocks it. This session took the topmost anyway, because §2 is unusually
+direct — *"Not the most interesting one — the topmost one; the ordering is how
+the human steers."* If a human wants BL-008 pulled forward, the way to do it is
+to reorder the Ready list, which is the mechanism §2 describes. A session
+should not do it by reinterpretation.
 
-BL-066's two standing notes for a later session remain true and untouched by
-this task:
+## What BL-068 leaves for the next session
+
+1. **BL-069 is the direct follow-on and it has a decision in it, not just
+   work.** The 500-line limit is still unenforced. `max-lines` would have
+   caught this drift, and it could not be switched on in BL-068 because three
+   test files outside the split are over the hard limit — `World.test.ts`
+   (547), `EventBus.test.ts` (533), `Rng.test.ts` (509) — and `Query.test.ts`
+   (499) is **one line** under and will cross on the next case anyone adds.
+   The measurement is in BL-069's notes.
+
+   **The part worth thinking about before touching the config:** nine of the
+   fourteen files over the *soft* limit are tests. A rule scoped to sources
+   only would enforce the limit precisely where it is not being broken, and a
+   rule that includes tests means splitting three suites that nobody has
+   complained about. `29_TESTING_STRATEGY.md` has no opinion on test-file
+   length. That is a question for a human as much as an agent — if you take it
+   and reach a view, record it in `40` rather than in a config comment.
+
+2. **An item names the file somebody noticed, not the worst one.** BL-068 was
+   filed about a 631-line source file; its test file was 701 and went
+   unmentioned. Fixing only what the item names would have left the larger
+   violation in the same directory and closed the item honestly. Worth
+   carrying: when a task is "this file is over a limit", measure the
+   neighbourhood before deciding what the task is.
+
+3. **A green suite does not verify a move.** A split that drops or duplicates
+   a `describe` block still runs green — the remaining cases pass and nothing
+   reports the missing ones. Record the count before and assert it after. It
+   came out unchanged at 342 here, but the failure mode is silent.
+
+4. **`ComponentRegistry.ts`'s doc comments reference `ComponentStore.prune`
+   and `.remove` across a file boundary now.** They were kept rather than
+   inlined, deliberately: the argument belongs with the method that embodies
+   it, and duplicating it is how two copies drift. If a later change moves
+   either method, those references need following.
+
+## Still current from BL-066, untouched by this task
 
 1. **A save pass can write itself out and cannot read itself back in.** That
    asymmetry is deliberate: `ErasedStore` has no `set`, because `set` is the
@@ -84,4 +93,5 @@ this task:
    BL-066's first draft wrote `erased.set(entity, at(1))` under one; it
    typechecked *and wrote a component*, making the next assertion in the same
    test claim the opposite of the truth. Read the property, do not call the
-   method, when what you mean to assert is that the method is absent.
+   method, when what you mean to assert is that the method is absent. Those two
+   cases now live in `ComponentRegistry.test.ts`.
