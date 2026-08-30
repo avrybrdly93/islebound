@@ -39,7 +39,10 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-*(nothing — pick the topmost unblocked task from Ready)*
+### BL-068 — `ComponentStore.ts` is 631 lines against a 500-line hard limit
+Claimed 2026-08-30. Topmost item in Phase 0's Ready list that is actually
+ready: BL-056 is Phase 1, and BL-067's own notes say it "should not be taken
+before `23` has a shape", which is still unmet. See `33_CURRENT_TASK.md`.
 
 ---
 
