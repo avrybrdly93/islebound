@@ -63,6 +63,18 @@ const EXPECTATIONS: readonly Expectation[] = [
     atLeast: 4,
     guards: 'the frame budget: a per-frame allocation is a GC pause the player feels',
   },
+  {
+    fixture: 'tools/lint-fixtures/over-max-lines.ts',
+    ruleId: 'max-lines',
+    // The count is in the message, so asserting on it also pins that nothing
+    // is being skipped: the fixture is 501 lines and every one of them is a
+    // blank or a comment. A config that grew `skipComments: true` would
+    // report a much smaller number, or nothing at all, and this fails.
+    messageIncludes: 'File has too many lines (501)',
+    atLeast: 1,
+    guards:
+      'the 500-line hard limit (BL-069): ComponentStore.ts reached 631 lines and its test file 701 with no signal at any point',
+  },
 ];
 
 async function main(): Promise<number> {
