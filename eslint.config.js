@@ -204,6 +204,33 @@ export default tseslint.config(
       'prefer-const': 'error',
       // 06 §2: maximum nesting depth 3.
       'max-depth': ['error', 3],
+      // `CLAUDE.md`: files ≤ 300 lines soft, 500 hard. Refs BL-069.
+      //
+      // Only the HARD limit is a rule. The soft one is deliberately not a
+      // `warn`: this repository's lint runs in CI, which reads an exit code,
+      // so a warning nothing fails on is a line of output nobody sees. 300
+      // stays a review-time convention and `CLAUDE.md` continues to say so.
+      // BL-069's own second criterion makes this argument; recorded here so
+      // the absence of a 300 reads as a decision rather than an oversight.
+      //
+      // Nothing is skipped — not blank lines, not comments. `CLAUDE.md` says
+      // "≤ 300 lines soft / 500 hard" with no qualification, and a rule that
+      // discounted comments would quietly enforce a different number than the
+      // one written down. It would also make a file shorter by deleting its
+      // explanation, which is the opposite of what this repository wants.
+      //
+      // TEST FILES ARE IN SCOPE, and that is the interesting half. The
+      // tempting scoping — sources only — enforces nothing: the largest
+      // source in the tree is 422 lines, while nine of the fourteen files
+      // over the soft limit are tests and three are over the hard one. A
+      // limit that cannot fail is not a limit. Those three carry a
+      // file-level suppression naming BL-070; see any of them for the
+      // reasoning, and note that a *new* file gets no such grace.
+      //
+      // This drift is why the rule exists: `ComponentStore.ts` reached 631
+      // lines and its test file 701 with no signal at any point, and BL-068
+      // split them by hand after a human noticed.
+      'max-lines': ['error', { max: 500, skipBlankLines: false, skipComments: false }],
       'no-restricted-syntax': ['error', ...RESTRICTED_SYNTAX],
       // 04 §5, binding. Default-deny: a pair not in the table is an error,
       // which is what makes the table the single source of truth rather than
