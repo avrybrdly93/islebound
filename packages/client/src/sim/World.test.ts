@@ -1,3 +1,16 @@
+/* eslint-disable max-lines -- 547 lines against the 500-line hard limit.
+ *
+ * Not a grant of an exemption: this file was already over when `max-lines` was
+ * switched on (BL-069), and BL-069's scope was the rule, not the three files
+ * that trip it. Splitting a test suite is the change with the silent failure
+ * mode BL-068 recorded -- a split that drops a `describe` block still runs
+ * green, because the remaining cases pass and nothing reports the missing
+ * ones. That is a task with a before/after count, not a line in a config
+ * commit. Filed as BL-070.
+ *
+ * A NEW file gets no such comment. The rule is on for everything; this is a
+ * visible, greppable admission of a known violation, which is what it is for.
+ */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
