@@ -34,6 +34,42 @@ What was added, and what it protects.
 
 ---
 
+## 2026-08-31 — BL-069 The 500-line limit becomes a rule, and it is on for tests
+
+**Type:** chore
+**Phase:** 0
+**PR:** —
+**Time:** ~1h
+
+### What changed
+`max-lines` is now an ESLint **error at 500**, counting blank lines and comments, applied to every linted file including tests. The three test files already over it — `World.test.ts` 547, `EventBus.test.ts` 533, `Rng.test.ts` 509 — carry file-level suppressions naming their count and the follow-on that splits them (**BL-070**), rather than being split here. The 300-line soft limit deliberately did **not** become a rule of any severity. A fixture, `tools/lint-fixtures/over-max-lines.ts`, proves the rule fires through the existing `pnpm lint:rules` mechanism, taking it from four expectations to five. Decision **0029** carries the full reasoning.
+
+### Why it was done this way
+**The scoping is the whole decision, and the tempting answer is the wrong one.** Restricting the rule to sources — which is what the previous handoff flagged as the obvious option, and what BL-068's own closing note leaned toward — would have enforced *nothing*: the largest source in the tree is `allocationHarness.ts` at 422 lines, 78 clear of the limit, while nine of the fourteen files over the soft limit are tests and all three hard-limit violations are tests. A rule that cannot fail on today's tree is a config entry, not a gate, and it would exclude precisely the files where the drift is happening.
+
+**Suppressions rather than splits, because `35` §3 says so and BL-068 says why.** Splitting three test suites is a change to three files this task does not otherwise touch. It also has the silent failure mode BL-068 recorded — a split that drops a `describe` block still runs green — which needs a before/after count, and that is a task rather than a line in a config commit. A file-level `eslint-disable max-lines` with the count and a BL reference is greppable, sits in the file it exempts, and leaves the rule on for every new file with no grace.
+
+**Nothing is skipped, and that is load-bearing rather than pedantic.** `CLAUDE.md` says "≤ 300 lines soft / 500 hard" with no qualification, so `skipComments: true` would enforce a different number than the one written down. Worse, it would make the cheapest route back under the limit *deleting a file's explanation* — the exact opposite of what decision 0028 chose when it carried comments through a split rather than cutting them.
+
+**The soft limit stays a convention, on BL-069's own argument.** Its second acceptance criterion points out that a `warn` nothing fails on is noise unless somebody reads warnings, and this repository's lint runs in CI, which reads an exit code. Fourteen files are over 300 today and nobody has complained. Calling that guidance is honest; leaving 300 looking like an unenforced rule is not.
+
+### Surprises
+1. **A rule can be switched on, look right, and enforce nothing — and the config gives no signal either way.** This is the same shape as the trap `eslint.config.js` already records for `boundaries` (its first version had no resolver, so a deliberate `core → sim` import passed). Turning `max-lines` on for sources only would have produced a green lint, a plausible-looking config line, and zero coverage. What made the difference was measuring the tree *before* choosing the scope rather than after. **Generalising: when enabling a lint rule, first check what it catches on today's code. If the answer is "nothing", find out whether that is because the code is clean or because the scope is wrong.**
+
+2. **The fixture had to be padded with comments, not code, and that turned out to be the useful design.** A 501-line fixture of declarations would prove the rule fires but would say nothing about `skipComments`. Made of blanks and comments, it only reports while `skipComments` stays `false`, and its expectation asserts on the **line count in the message** rather than merely the rule id — so the count is pinned too. Verified by flipping the flag: `pnpm lint:rules` goes from 5/5 to a named failure. Worth carrying: a fixture that pins the rule's *configuration* is worth more than one that pins its existence.
+
+3. **The docs' own summary of this item was slightly off, in a direction that mattered.** BL-068's closing note and `33`'s handoff both framed the sources-only option as "enforcing the limit precisely where it is not being broken", which reads as a mild inefficiency. Measured, it is stronger than that: it enforces the limit *nowhere*, because no source is within 78 lines of it. The prose was right and understated; the measurement is what made the decision obvious. No doc change needed — this entry is the record.
+
+### Tests
+`tools/lint-fixtures/over-max-lines.ts` plus its expectation in `tools/check-lint-rules.ts`: five fixtures now, all caught. It protects the rule's *existence* and its `skipComments: false` configuration, which is the half a well-meaning tidy-up would remove. No unit tests were added or changed — this task adds no product code. **Suite unchanged at 342 pass / 0 fail across 88 suites**, before and after, which is the check that matters when a change touches three test files: a suppression comment must not alter what runs.
+
+`pnpm lint` clean, `pnpm typecheck` clean, `pnpm format:check` clean, `pnpm lint:rules` 5/5.
+
+### Follow-ups
+- **BL-070** — the three suites that now suppress the rule, with the before/after-count requirement and the prior question of whether they should be split at all (`29` has no opinion on test-file length, and a documented exemption may be the honest outcome).
+
+---
+
 ## 2026-08-30 — BL-068 Split `ComponentStore.ts` at its two seams
 
 **Type:** refactor
