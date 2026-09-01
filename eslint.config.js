@@ -185,6 +185,36 @@ export default tseslint.config(
       },
     },
     rules: {
+      // `CLAUDE.md`: files are 300 lines soft, 500 hard. Until BL-069 the hard
+      // limit was a number in a document that nothing checked, which is how
+      // `ComponentStore.ts` reached 631 and its test file 701 with no signal
+      // at any point. This is the check.
+      //
+      // Three decisions are baked in here, and each was a real choice --
+      // see decision 0029 in `40_DECISION_LOG.md`:
+      //
+      //   * `error`, not `warn`. Lint runs in CI, where nobody reads warnings,
+      //     so a warning is a number that reads like a rule and is not one --
+      //     exactly the state BL-069 was filed to end.
+      //   * **Test files are in scope**, and they are the reason the rule
+      //     bites: at BL-069's filing, nine of the fourteen files over the
+      //     soft limit were tests, and every one of the three over the *hard*
+      //     limit was. A sources-only rule would have enforced the limit
+      //     precisely where nobody was breaking it. `World.test.ts` (547),
+      //     `EventBus.test.ts` (533) and `Rng.test.ts` (509) were split to
+      //     turn this on; none was exempted.
+      //   * **Raw lines** -- `skipComments` and `skipBlankLines` are
+      //     deliberately left off. Either would have dropped all three under
+      //     the limit and closed BL-069 without moving a line of code. A
+      //     reader opening a 700-line file is not consoled by learning that
+      //     200 of them are comments, and in this repository the comments are
+      //     load-bearing enough that discounting them would be perverse.
+      //
+      // The **soft** limit of 300 is deliberately NOT a second `max-lines` at
+      // `warn`. Fourteen files sit over it, every one of them on purpose, and
+      // a warning nobody reads is noise. `CLAUDE.md` states it as a
+      // convention rather than a rule.
+      'max-lines': ['error', { max: 500, skipComments: false, skipBlankLines: false }],
       // 06 §1.2: types are never `any`.
       '@typescript-eslint/no-explicit-any': 'error',
       // 05 §8.3: type-only imports are explicit so bundling stays clean.
