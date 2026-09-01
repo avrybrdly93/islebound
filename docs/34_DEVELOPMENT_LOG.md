@@ -34,6 +34,50 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-01 — BL-069 The 500-line limit is now enforced
+
+**Type:** chore
+**Phase:** 0
+**PR:** —
+**Time:** ~2h
+
+### What changed
+
+`max-lines` is on in `eslint.config.js` at `['error', { max: 500 }]`, applied to every TypeScript file including tests, counting raw lines. The three test files that were over it were split, each at an existing `describe` seam and each into a pair plus a small fixture module: `World.test.ts` 547 → 262 + 278 + 42, `EventBus.test.ts` 533 → 332 + 212 + 41, `Rng.test.ts` 509 → 204 + 235 + 113. `CLAUDE.md`'s conventions line now distinguishes the enforced hard limit from the 300-line soft target, which nothing checks. Decision **0029** records the choices.
+
+### Why it was done this way
+
+BL-069's criteria offered an either/or — enforce the limit, or restate it as a convention and say why — and asked that the soft limit and test-file scope be decided rather than left implicit. Three things settled it:
+
+**Tests are in scope, and that is the whole decision.** The tempting version of this rule is sources-only, and it is wrong for a measurable reason: **no source file is over 500** — the largest is `allocationHarness.ts` at 422 — so a sources-only rule turns on with zero code changes and enforces the limit precisely where nobody is breaking it. Nine of the fourteen files over the soft limit are tests; all three over the hard limit were. A rule that cannot fail is not a rule.
+
+**Raw lines.** `skipComments` and `skipBlankLines` were both available and either one drops all three offenders under 500, closing this item without moving a line of code. That is dodging the question. It would also invert decision 0028, which explicitly chose to keep `ComponentStore.ts`'s comments over its line count on the grounds that they are the record of *why* — discounting them here would say the opposite.
+
+**The soft limit is not a `warn`.** Lint runs in CI, where nobody reads warnings, so a warning is another number that reads like a rule and is not one — which is the exact state this item was filed to end. Fourteen files sit over 300 and every one is deliberate. It is now labelled as a convention instead.
+
+### Surprises
+
+1. **The rule was verified to fire, and that step nearly got skipped.** After the splits, `pnpm lint` was clean — which is exactly what a *correctly configured* rule and a *silently misconfigured* one both look like once no file violates them. A 511-line probe file was written, confirmed to report `File has too many lines (511). Maximum allowed is 500`, and removed. This is the same shape as BL-068's Surprise 3 (a green suite does not verify a move) one level up: **a green lint does not verify a lint rule.** Worth carrying: after enabling any rule that nothing currently violates, make something violate it once.
+
+2. **The splits reversed decision 0028's alternative (c), and the reversal is real rather than an oversight.** 0028 rejected a shared test-fixture module, preferring visible duplication to indirection for fixtures that were "three lines and stable". These are not that: `Rng`'s shared block is 113 lines of chi-square machinery whose critical values are stated rather than eyeballed, and two drifting copies of a statistical test is precisely what makes such a test worthless. The principle is unchanged — duplicate what is trivial, share what is substantial — and only the size of the thing changed. A future reader comparing 0028 and 0029 will see two opposite calls; this is why.
+
+3. **The previous handoff's reason for skipping BL-067 was right but its wording was not, and checking mattered.** It said `23_SAVE_SYSTEM.md` "describes no save format". It does — §2 defines a `SaveFile` envelope with version, seed, checksum and `entities: EntitySave[]`. What it never defines is `EntitySave`, which is named once in that interface and appears nowhere else in the document. So there is no *component-level* format, which is the narrower thing BL-067's first criterion actually presumes ("a save file's `"Transform"` resolves to the `ComponentDef<Transform>`"). Same conclusion, checkable reason. A handoff summarising a document is worth re-reading against the document.
+
+4. **Four unused imports survived a clean typecheck and were caught only by lint.** Splitting a file leaves each half importing the union of what both needed; `tsc --noEmit` is perfectly happy with an unused import and `@typescript-eslint/no-unused-vars` is not. Run both after any split — the order that finds problems fastest is typecheck (missing imports) then lint (surplus ones).
+
+### Tests
+
+No test was added, changed in content, or removed. Every case was moved verbatim; the only edits inside a suite were two references to `noopCalls` becoming `noopCallCount()`, because the counter moved behind a reader function so a caller cannot reset it and make the "was not called" assertions vacuous.
+
+**The suite count is the verification, and it is unchanged: 342 pass / 0 fail across 88 suites**, identical to the pre-change baseline measured this session. BL-068's Surprise 3 is why that is the check that matters — a split that drops a `describe` block still runs green, because the remaining cases pass and nothing reports the missing ones.
+
+Full gate: `pnpm lint`, `pnpm lint:rules`, `pnpm typecheck`, `pnpm format:check`, `pnpm test:node`, `pnpm build` — all clean.
+
+### Follow-ups
+
+- `Query.test.ts` sits at **499**, one line under the limit, and is left there deliberately. The next case anybody adds fails lint — which is the rule working, and unlike before the failure says exactly what to do.
+- `pnpm test`, `pnpm sim` and `pnpm check:bundle` still do not exist; `CLAUDE.md`'s verify block still names them. That is **BL-062**, unchanged and still open, and it is now the topmost ready item.
+
 ## 2026-08-30 — BL-068 Split `ComponentStore.ts` at its two seams
 
 **Type:** refactor

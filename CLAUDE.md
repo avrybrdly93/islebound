@@ -57,7 +57,7 @@ Architecturally significant choices also go in `docs/40_DECISION_LOG.md`.
 ## Conventions cheat sheet
 
 - Content IDs: `item.pine_plank`, `node.oak_tree` · Events: `resource:harvested` · Intents: `build:place`
-- Files ≤ 300 lines soft / 500 hard; systems ≤ 200 lines
+- Files ≤ 500 lines — **enforced**, `max-lines` at `error`, tests included, raw lines. 300 is a soft target nothing checks (decision 0029). Systems ≤ 200 lines, also unenforced
 - Imports via `@core/*`, `@sim/*`, `@render/*`, `@ui/*`, `@content/*` — direction rules in `docs/04` §5
 - No `any`, no `enum`, no default exports (except React components), no barrel files
 - No allocation in per-frame paths; scratch objects at module scope

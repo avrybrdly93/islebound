@@ -4,98 +4,119 @@
 
 ---
 
-## Status: IN PROGRESS — BL-069
+## Status: IDLE
 
-**The 500-line limit is still unenforced, and three test files are over it.**
-Phase 0 · Size S · Depends on: — · Docs to read: 06, 29.
+No task in progress. **BL-069 is complete** (2026-09-01) — `max-lines` is on
+at `['error', { max: 500 }]` across every TypeScript file including tests,
+counting raw lines, and the three test files that were over it were split.
+`CLAUDE.md` now distinguishes the enforced hard limit from the 300-line soft
+target that nothing checks. See `34_DEVELOPMENT_LOG.md` 2026-09-01 (BL-069)
+and decision **0029**; its **Surprises** are load-bearing, especially item 1.
 
-Claimed 2026-09-01, before any code. Moved to In Progress in `32_BACKLOG.md`
-in the same commit.
+Suite unchanged at **342 pass / 0 fail across 88 suites** — the check that
+matters for a move.
 
-## Why this task
+## Next action for an agent
 
-`AI_DEVELOPMENT_WORKFLOW.md` §2: the topmost unblocked task in the current
-phase's Ready list. Walking the list rather than trusting the previous
-handoff, as that handoff itself instructed:
+The topmost unblocked task in Phase 0's Ready list, per
+`AI_DEVELOPMENT_WORKFLOW.md` §2.
 
-1. **BL-056** — still **Phase 1**, so still not a candidate under phase
-   discipline. Tenth session running.
-2. **BL-059**, **BL-066**, **BL-068** — done.
-3. **BL-067** — skipped, **on its own instruction rather than on my
-   judgement**: its notes say "it should not be taken before `23` has a
-   shape". Verified rather than inherited, and the previous handoff's wording
-   for this needs correcting: it said `23_SAVE_SYSTEM.md` "describes no save
-   format", which is **not quite right** — §2 does define a `SaveFile`
-   envelope (version, seed, checksum, `entities: EntitySave[]`). What it does
-   not define is `EntitySave`. That type is named once, in that interface, and
-   appears nowhere else in the document. So there is no component-level
-   format at all: nothing says an entity's components are keyed by `def.name`,
-   which is precisely the thing BL-067's first acceptance criterion presumes
-   ("a save file's `"Transform"` resolves to the `ComponentDef<Transform>`").
-   The precondition is genuinely unmet — but for a narrower and more checkable
-   reason than "there is no format".
-4. **BL-069** — Phase 0, no dependencies, ready. **This one.**
+**Read the file, do not trust this line.** In list order the situation is:
 
-## Objective
+- **BL-056** is still **Phase 1**, so still not a candidate under phase
+  discipline — tenth session running.
+- **BL-067** is still the one to skip, and skip it **on its own instruction**
+  rather than on your judgement: its notes say it "should not be taken before
+  `23` has a shape". Checked again this session, and the previous handoff's
+  reason needed narrowing — `23_SAVE_SYSTEM.md` **does** define a save format
+  in §2 (a `SaveFile` envelope: version, seed, checksum,
+  `entities: EntitySave[]`). What it never defines is **`EntitySave`**, which
+  is named once in that interface and appears nowhere else in the document. So
+  there is no *component-level* format, and that is the precise thing BL-067's
+  first criterion presumes. Same conclusion as the last two handoffs, on a
+  reason you can check in one grep.
+- **BL-069** — done, this session.
+- **BL-062** is therefore the topmost that is actually ready. Say so in the
+  log, as this session did for BL-069 and BL-068 did before it.
 
-Answer BL-069's three acceptance criteria with a decision that is recorded,
-not a config edit that reads like one.
+Then **BL-063**, **BL-065**, then **BL-008**.
 
-## The decision, and the reasoning behind it
+## Why BL-062 is a good next task, and one thing to watch
 
-**Enable `max-lines` as an `error` at 500 across every TypeScript file,
-tests included, counting raw lines; leave the 300-line soft limit advisory and
-say so in `CLAUDE.md`.**
+`CLAUDE.md`'s verify block names `pnpm test`, `pnpm sim --ticks 20000
+--assert-hash` and `pnpm build && pnpm check:bundle`. Of those, **`pnpm test`,
+`pnpm sim` and `pnpm check:bundle` do not exist** — `package.json` has
+`test:node`, and no `sim` or `check:bundle` at all. `pnpm build` does exist and
+passes.
 
-Three things drove it:
+This session touched the same paragraph of `CLAUDE.md` that BL-062 is about,
+for the file-length line, and deliberately did **not** fix the verify block
+while it was there — that is BL-062's, and `35` §3 forbids the ride-along. But
+note the overlap: whoever takes BL-062 is editing the same document, and should
+read decision 0029 first so the two edits do not disagree about what "enforced"
+means in that file.
 
-1. **No source file is over 500 today.** Measured this session, matching
-   BL-069's filing exactly: the largest is `allocationHarness.ts` at 422. So
-   the sources-only version of this rule would turn on with zero code changes
-   — and would enforce the limit *precisely where nobody is breaking it*,
-   which is BL-069's own closing observation. A rule that cannot fail is not a
-   rule.
-2. **Tests are where the limit actually gets broken, and BL-068 already
-   showed splitting one is worthwhile.** `ComponentStore.test.ts` was 701
-   lines — 70 more than the source everyone was worried about — and split
-   cleanly along the same seams. Exempting tests would be exempting the only
-   files with a track record of needing this.
-3. **Raw lines, no `skipComments`/`skipBlankLines`.** Those options would drop
-   all three offenders under the limit and close this item without moving a
-   line of code. That is dodging the task, not deciding it: a reader opening a
-   700-line file does not feel better on learning 200 of them are comments,
-   and this repository's comments are load-bearing enough that discounting
-   them would be perverse.
+## The standing question, unchanged
 
-On the **soft limit** (criterion 2): a `warn` at 300 is not enabled. BL-069's
-own criterion says a warning nobody reads is noise, and lint here runs in CI
-where nobody reads warnings. Fourteen files are over 300 and every one of them
-is deliberate. So `CLAUDE.md`'s 300 is restated as what it is — a convention —
-rather than left as a number that reads like a rule and is not one.
+**Six** `S` items sit ahead of **BL-008**, the `M` the phase is actually for,
+and none of them blocks it. Sessions keep taking the topmost because §2 is
+unusually direct — *"Not the most interesting one — the topmost one; the
+ordering is how the human steers."* If a human wants BL-008 pulled forward, the
+way to do it is to **reorder the Ready list**, which is the mechanism §2
+describes. A session should not do it by reinterpretation. This is the fourth
+handoff to say so.
 
-## Acceptance criteria
+## What BL-069 leaves for the next session
 
-- [ ] `max-lines` enabled at the hard limit, and **every** file under it
-- [ ] The soft limit is decided explicitly, not left ambiguous
-- [ ] Whether test files are in scope is stated explicitly
-- [ ] The three over-limit test files are split, not exempted:
-      `World.test.ts` (547), `EventBus.test.ts` (533), `Rng.test.ts` (509)
-- [ ] `Query.test.ts` (499, one line under) is looked at — it crosses on the
-      next case anyone adds
-- [ ] Decision recorded in `40_DECISION_LOG.md`
-- [ ] **Suite count unchanged at 342 pass / 0 fail, 88 suites.** This is the
-      check that matters for a move, per BL-068's Surprise 3: a split that
-      drops a `describe` still runs green.
+1. **A green lint does not verify a lint rule.** After the splits `pnpm lint`
+   was clean — which is exactly what a correctly configured rule and a silently
+   misconfigured one both look like once nothing violates them. This session
+   wrote a 511-line probe file, confirmed the error, and removed it. It is the
+   same shape as BL-068's "a green suite does not verify a move", one level up.
+   **After enabling any rule that nothing currently violates, make something
+   violate it once.**
 
-## Baseline measured this session, before any edit
+2. **`Query.test.ts` is at 499, one line under the limit, left there on
+   purpose.** The next case anybody adds fails `pnpm lint`. That is the rule
+   working, not a problem to pre-empt — and unlike before, the failure names
+   the file and says what the limit is. Do not "fix" it in advance; split it
+   when a case actually needs adding, and cut at a `describe` seam.
 
-`pnpm lint` clean · `pnpm typecheck` clean · `pnpm test:node` **342 pass /
-0 fail across 88 suites**.
+3. **Decision 0029 reverses decision 0028's alternative (c), deliberately.**
+   0028 rejected a shared test-fixture module in favour of visible duplication,
+   for fixtures that were "three lines and stable". BL-069 created three of
+   them. The principle is the same — duplicate what is trivial, share what is
+   substantial — and only the size changed: `Rng.testFixtures.ts` is 113 lines
+   of chi-square machinery whose critical values are stated rather than
+   eyeballed. A reader comparing the two decisions will see opposite calls;
+   0029's Consequences say why.
 
-Over the hard limit: `World.test.ts` 547, `EventBus.test.ts` 533,
-`Rng.test.ts` 509. One under: `Query.test.ts` 499. Over the soft limit and
-under the hard: `allocationHarness.ts` 422, `ComponentStore.test.ts` 421,
-`Noise.ts` 409, `ComponentStore.ts` 360, `allocation.test.ts` 357,
-`PoissonDisk.test.ts` 318, `World.ts` 314, `EventBus.ts` 314,
-`ComponentRegistry.test.ts` 304, `Noise.test.ts` 303. Identical to BL-069's
-filing — nothing drifted in the intervening session.
+4. **Splitting a file leaves each half importing the union of what both
+   halves needed, and `tsc` will not tell you.** Four unused imports survived a
+   clean typecheck here and were caught only by
+   `@typescript-eslint/no-unused-vars`. After any split, run typecheck first
+   (it finds *missing* imports) then lint (it finds *surplus* ones).
+
+## Still current from BL-066, untouched by BL-068 or BL-069
+
+1. **A save pass can write itself out and cannot read itself back in.** That
+   asymmetry is deliberate: `ErasedStore` has no `set`, because `set` is the
+   one member contravariant in the component's `T` and an erased one would
+   accept any component's value into any store. Loading goes through
+   `ComponentRegistry.store(def)` with a real def, so the load side needs a
+   name-to-def table — **BL-067**, and nothing owns one today. **The trap is
+   that the write side works**, so a session could build an entire serialiser
+   before meeting the missing half.
+
+2. **`@ts-expect-error` suppresses the compile error and still runs the code.**
+   BL-066's first draft wrote `erased.set(entity, at(1))` under one; it
+   typechecked *and wrote a component*, making the next assertion in the same
+   test claim the opposite of the truth. Read the property, do not call the
+   method, when what you mean to assert is that the method is absent. Those two
+   cases now live in `ComponentRegistry.test.ts`.
+
+3. **`ComponentRegistry.ts`'s doc comments reference `ComponentStore.prune`
+   and `.remove` across a file boundary.** Kept rather than inlined,
+   deliberately: the argument belongs with the method that embodies it, and
+   duplicating it is how two copies drift. If a later change moves either
+   method, those references need following.
