@@ -4,94 +4,98 @@
 
 ---
 
-## Status: IDLE
+## Status: IN PROGRESS — BL-069
 
-No task in progress. **BL-068 is complete** (2026-08-30) —
-`sim/ecs/ComponentStore.ts` was 631 lines against the 500-line hard limit and
-is now three files: `ComponentDef.ts` (159), `ComponentStore.ts` (360),
-`ComponentRegistry.ts` (161). Its test file was **701** lines and is now three:
-43 / 421 / 304. All three acceptance criteria met. Suite unchanged at
-**342 pass / 0 fail** — which is the check that matters for a move. See
-`34_DEVELOPMENT_LOG.md` 2026-08-30 (BL-068) and decision **0028**; its
-**Surprises** are load-bearing, especially items 2 and 3.
+**The 500-line limit is still unenforced, and three test files are over it.**
+Phase 0 · Size S · Depends on: — · Docs to read: 06, 29.
 
-## Next action for an agent
+Claimed 2026-09-01, before any code. Moved to In Progress in `32_BACKLOG.md`
+in the same commit.
 
-The topmost unblocked task in Phase 0's Ready list, per
-`AI_DEVELOPMENT_WORKFLOW.md` §2.
+## Why this task
 
-**Read the file, do not trust this line.** `BL-056` still sits at the top of
-Ready and is still **Phase 1**, so it is still not a candidate under phase
-discipline — ninth session running. After it, the Phase-0 items in list order
-are **BL-067**, **BL-069** (new, filed by this session), **BL-062**,
-**BL-063**, **BL-065**, then **BL-008**.
+`AI_DEVELOPMENT_WORKFLOW.md` §2: the topmost unblocked task in the current
+phase's Ready list. Walking the list rather than trusting the previous
+handoff, as that handoff itself instructed:
 
-**BL-067 is still the one to skip, and skip it on its own instruction rather
-than on your judgement.** Its notes say "**Not urgent, and it should not be
-taken before `23` has a shape**", and `23_SAVE_SYSTEM.md` still describes no
-save format that a name-to-def table would serve. Building a registration
-mechanism with no format to serve is a guess. That makes **BL-069** the
-topmost-that-is-actually-ready — say so in the log, as this session did for
-BL-068.
+1. **BL-056** — still **Phase 1**, so still not a candidate under phase
+   discipline. Tenth session running.
+2. **BL-059**, **BL-066**, **BL-068** — done.
+3. **BL-067** — skipped, **on its own instruction rather than on my
+   judgement**: its notes say "it should not be taken before `23` has a
+   shape". Verified rather than inherited, and the previous handoff's wording
+   for this needs correcting: it said `23_SAVE_SYSTEM.md` "describes no save
+   format", which is **not quite right** — §2 does define a `SaveFile`
+   envelope (version, seed, checksum, `entities: EntitySave[]`). What it does
+   not define is `EntitySave`. That type is named once, in that interface, and
+   appears nowhere else in the document. So there is no component-level
+   format at all: nothing says an entity's components are keyed by `def.name`,
+   which is precisely the thing BL-067's first acceptance criterion presumes
+   ("a save file's `"Transform"` resolves to the `ComponentDef<Transform>`").
+   The precondition is genuinely unmet — but for a narrower and more checkable
+   reason than "there is no format".
+4. **BL-069** — Phase 0, no dependencies, ready. **This one.**
 
-The standing question the previous handoffs raised is unchanged: **six** `S`
-items sit ahead of **BL-008**, the `M` the phase is actually for, and none of
-them blocks it. This session took the topmost anyway, because §2 is unusually
-direct — *"Not the most interesting one — the topmost one; the ordering is how
-the human steers."* If a human wants BL-008 pulled forward, the way to do it is
-to reorder the Ready list, which is the mechanism §2 describes. A session
-should not do it by reinterpretation.
+## Objective
 
-## What BL-068 leaves for the next session
+Answer BL-069's three acceptance criteria with a decision that is recorded,
+not a config edit that reads like one.
 
-1. **BL-069 is the direct follow-on and it has a decision in it, not just
-   work.** The 500-line limit is still unenforced. `max-lines` would have
-   caught this drift, and it could not be switched on in BL-068 because three
-   test files outside the split are over the hard limit — `World.test.ts`
-   (547), `EventBus.test.ts` (533), `Rng.test.ts` (509) — and `Query.test.ts`
-   (499) is **one line** under and will cross on the next case anyone adds.
-   The measurement is in BL-069's notes.
+## The decision, and the reasoning behind it
 
-   **The part worth thinking about before touching the config:** nine of the
-   fourteen files over the *soft* limit are tests. A rule scoped to sources
-   only would enforce the limit precisely where it is not being broken, and a
-   rule that includes tests means splitting three suites that nobody has
-   complained about. `29_TESTING_STRATEGY.md` has no opinion on test-file
-   length. That is a question for a human as much as an agent — if you take it
-   and reach a view, record it in `40` rather than in a config comment.
+**Enable `max-lines` as an `error` at 500 across every TypeScript file,
+tests included, counting raw lines; leave the 300-line soft limit advisory and
+say so in `CLAUDE.md`.**
 
-2. **An item names the file somebody noticed, not the worst one.** BL-068 was
-   filed about a 631-line source file; its test file was 701 and went
-   unmentioned. Fixing only what the item names would have left the larger
-   violation in the same directory and closed the item honestly. Worth
-   carrying: when a task is "this file is over a limit", measure the
-   neighbourhood before deciding what the task is.
+Three things drove it:
 
-3. **A green suite does not verify a move.** A split that drops or duplicates
-   a `describe` block still runs green — the remaining cases pass and nothing
-   reports the missing ones. Record the count before and assert it after. It
-   came out unchanged at 342 here, but the failure mode is silent.
+1. **No source file is over 500 today.** Measured this session, matching
+   BL-069's filing exactly: the largest is `allocationHarness.ts` at 422. So
+   the sources-only version of this rule would turn on with zero code changes
+   — and would enforce the limit *precisely where nobody is breaking it*,
+   which is BL-069's own closing observation. A rule that cannot fail is not a
+   rule.
+2. **Tests are where the limit actually gets broken, and BL-068 already
+   showed splitting one is worthwhile.** `ComponentStore.test.ts` was 701
+   lines — 70 more than the source everyone was worried about — and split
+   cleanly along the same seams. Exempting tests would be exempting the only
+   files with a track record of needing this.
+3. **Raw lines, no `skipComments`/`skipBlankLines`.** Those options would drop
+   all three offenders under the limit and close this item without moving a
+   line of code. That is dodging the task, not deciding it: a reader opening a
+   700-line file does not feel better on learning 200 of them are comments,
+   and this repository's comments are load-bearing enough that discounting
+   them would be perverse.
 
-4. **`ComponentRegistry.ts`'s doc comments reference `ComponentStore.prune`
-   and `.remove` across a file boundary now.** They were kept rather than
-   inlined, deliberately: the argument belongs with the method that embodies
-   it, and duplicating it is how two copies drift. If a later change moves
-   either method, those references need following.
+On the **soft limit** (criterion 2): a `warn` at 300 is not enabled. BL-069's
+own criterion says a warning nobody reads is noise, and lint here runs in CI
+where nobody reads warnings. Fourteen files are over 300 and every one of them
+is deliberate. So `CLAUDE.md`'s 300 is restated as what it is — a convention —
+rather than left as a number that reads like a rule and is not one.
 
-## Still current from BL-066, untouched by this task
+## Acceptance criteria
 
-1. **A save pass can write itself out and cannot read itself back in.** That
-   asymmetry is deliberate: `ErasedStore` has no `set`, because `set` is the
-   one member contravariant in the component's `T` and an erased one would
-   accept any component's value into any store. Loading goes through
-   `ComponentRegistry.store(def)` with a real def, so the load side needs a
-   name-to-def table — **BL-067**, and nothing owns one today. **The trap is
-   that the write side works**, so a session could build an entire serialiser
-   before meeting the missing half.
+- [ ] `max-lines` enabled at the hard limit, and **every** file under it
+- [ ] The soft limit is decided explicitly, not left ambiguous
+- [ ] Whether test files are in scope is stated explicitly
+- [ ] The three over-limit test files are split, not exempted:
+      `World.test.ts` (547), `EventBus.test.ts` (533), `Rng.test.ts` (509)
+- [ ] `Query.test.ts` (499, one line under) is looked at — it crosses on the
+      next case anyone adds
+- [ ] Decision recorded in `40_DECISION_LOG.md`
+- [ ] **Suite count unchanged at 342 pass / 0 fail, 88 suites.** This is the
+      check that matters for a move, per BL-068's Surprise 3: a split that
+      drops a `describe` still runs green.
 
-2. **`@ts-expect-error` suppresses the compile error and still runs the code.**
-   BL-066's first draft wrote `erased.set(entity, at(1))` under one; it
-   typechecked *and wrote a component*, making the next assertion in the same
-   test claim the opposite of the truth. Read the property, do not call the
-   method, when what you mean to assert is that the method is absent. Those two
-   cases now live in `ComponentRegistry.test.ts`.
+## Baseline measured this session, before any edit
+
+`pnpm lint` clean · `pnpm typecheck` clean · `pnpm test:node` **342 pass /
+0 fail across 88 suites**.
+
+Over the hard limit: `World.test.ts` 547, `EventBus.test.ts` 533,
+`Rng.test.ts` 509. One under: `Query.test.ts` 499. Over the soft limit and
+under the hard: `allocationHarness.ts` 422, `ComponentStore.test.ts` 421,
+`Noise.ts` 409, `ComponentStore.ts` 360, `allocation.test.ts` 357,
+`PoissonDisk.test.ts` 318, `World.ts` 314, `EventBus.ts` 314,
+`ComponentRegistry.test.ts` 304, `Noise.test.ts` 303. Identical to BL-069's
+filing — nothing drifted in the intervening session.
