@@ -12,8 +12,10 @@
     "typecheck": "pnpm -r --if-present run typecheck",
     "lint": "eslint .",
     "lint:rules": "node --experimental-strip-types tools/check-lint-rules.ts",
+    "lint:docs": "node --experimental-strip-types tools/check-doc-commands.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "test": "pnpm test:node",
     "test:node": "node --expose-gc --import ./tools/registerAliases.mjs --test 'packages/*/src/**/*.test.ts'",
     "test:node:coverage": "node --expose-gc --import ./tools/registerAliases.mjs --test --experimental-test-coverage 'packages/*/src/**/*.test.ts'"
   },

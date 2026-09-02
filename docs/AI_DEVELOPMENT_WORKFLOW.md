@@ -39,6 +39,14 @@ pnpm lint && pnpm typecheck && pnpm test
 pnpm sim --ticks 20000 --assert-hash
 pnpm build && pnpm check:bundle        # if you touched anything bundled
 ```
+**Two of those are not built yet, and a Phase-0 session should expect to see
+them fail with "command not found":** `pnpm sim` arrives with **BL-014**,
+`pnpm check:bundle` with **BL-018**. The first line works today, as do `pnpm
+lint:rules` (proves the custom lint rules fire) and `pnpm lint:docs` (proves
+this paragraph stays true — it fails if a doc names a `pnpm` script that
+neither exists nor names the backlog item that will build it). `pnpm test` is
+an alias for `pnpm test:node` until **BL-015** owns the harness.
+
 All green locally before the PR. If the determinism hash changed intentionally, rebaseline with the reason in the commit body.
 
 ### 7. Document

@@ -45,6 +45,14 @@ pnpm sim --ticks 20000 --assert-hash
 pnpm build && pnpm check:bundle
 ```
 
+**Two of those do not exist yet, and that is expected in Phase 0.** `pnpm sim`
+arrives with **BL-014** and `pnpm check:bundle` with **BL-018**; until then
+they exit "command not found" and the run is still green. What exists today is
+the first line, plus `pnpm lint:rules` and `pnpm lint:docs`. Same for
+`tools/check-sim-purity.ts` above — that is **BL-017**, and the lint half of
+that sentence is what enforces `sim/` purity for now. `pnpm lint:docs` is what
+keeps this paragraph true (BL-062).
+
 ## End of session (all four, in order)
 
 1. Commit — conventional message, `Refs BL-###`
