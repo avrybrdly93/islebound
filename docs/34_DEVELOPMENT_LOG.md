@@ -34,6 +34,43 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-02 — BL-062 The verify block is runnable, and a check keeps it that way
+
+**Type:** fix
+**Phase:** 0
+**PR:** —
+**Time:** ~1.5h
+
+### What changed
+
+`pnpm test` exists, as an alias for `pnpm test:node`. `CLAUDE.md` and `docs/AI_DEVELOPMENT_WORKFLOW.md` now name the backlog item that builds each command they mention and the repository does not have: `pnpm sim` → **BL-014**, `pnpm check:bundle` → **BL-018**, `tools/check-sim-purity.ts` → **BL-017**. And `tools/check-doc-commands.ts`, run by the new `pnpm lint:docs`, fails when a covered document names a `pnpm` script that neither exists in `package.json` nor carries — beside it — the id of the item that will build it.
+
+### Why it was done this way
+
+**An alias rather than a rename.** `pnpm test` is the name both documents use and the one a newcomer types; renaming `test:node` to `test` would edit every document and script that names it, for no gain, and BL-015 rewrites those scripts anyway. The criterion offered "an alias, or the docs stop naming it"; the alias is the half that leaves the documents right.
+
+**"This arrives with BL-014" rather than "do not run this".** The three unbuilt commands are unbuilt *on purpose* — this is Phase 0 and each has its own backlog item. What an agent following the verify block needs is not a shorter block but the ability to tell an expected failure from a real one, which is exactly what the item id gives.
+
+**The check is the deliverable; the wording fix is not.** `29` §9's *Bug fix* row asks for a regression test that fails before the fix, and the bug here is "a document names a command that does not exist" — a class, not an instance. Editing the two paragraphs answers today. The check answers the next time, and it was written first and confirmed failing on the pre-fix documents, on exactly the six references BL-062 describes.
+
+**Scope held, deliberately.** `README.md` and both `tasks/*.md` name the same commands. BL-062's description names two documents and its criteria say "both docs", so `COVERED_DOCS` is an explicit two-file list and the rest is filed as **BL-070** — which is not a mechanical repeat, because `README.md` is read by humans arriving at the repository rather than by an agent following a verify block, and "this arrives with BL-014" may be the wrong register there.
+
+### Surprises
+
+1. **The first version of the check was wrong, and only a perturbation said so.** It asked for "a `BL-###` anywhere in the paragraph". Deleting `BL-014` from `CLAUDE.md`'s note left `BL-017` and `BL-062` still in that paragraph, so the check stayed **green** while the document had stopped saying which item builds `pnpm sim`. This is BL-069's Surprise 1 one turn further on: *a green check does not verify a check* — and the failure mode here was subtler, because the check did run, did parse, and did report. It was asking a weaker question than it appeared to. The fix is an `UNBUILT_COMMANDS` table naming the expected id per script, which is the same shape `check-lint-rules.ts`'s expectation table already uses; both perturbations now fail. **Worth carrying: when a check's rule is "some marker is nearby", ask what else could satisfy it.**
+
+2. **The paragraph rule had to be loosened before it was tightened, and the two are not in tension.** A strict "same paragraph" rule failed on `CLAUDE.md`, because the natural place to explain a fenced command block is the prose *under* the fence, and the blank line ending the fence ends the paragraph. Requiring the marker strictly inside would push `BL-014` into the middle of a command an agent is meant to copy. So the scope is the command's paragraph plus the one after it — wider — while the *content* requirement went from "any id" to "this id" — narrower. A check that makes documents worse gets deleted, and one that accepts anything nearby is not a check.
+
+3. **`pnpm test:node` needed `pnpm install` first, and nothing says so.** A clean clone's `pnpm lint` and `pnpm typecheck` fail with module-resolution stack traces and a quiet `WARN Local package.json exists, but node_modules missing` buried among them. That is ordinary, but it is the same class of problem BL-062 is about — a documented command that does not do what a literal reading suggests — and the verify block does not mention installing. Not fixed here (that is scope), and not filed either: the fix belongs with BL-021's root documentation, which is the item that owns a quick-start.
+
+### Tests
+
+No test in `packages/` was added, changed or removed; the suite is unchanged at **342 pass / 0 fail across 88 suites**, and now runs through the new `pnpm test` alias, which is the check that the alias resolves. The new coverage is `tools/check-doc-commands.ts` itself — a script rather than a `.test.ts`, for the reason `check-lint-rules.ts` gives: it reads repository-root files that no package under `packages/*/src/**` owns. Both perturbations (delete an expected id; invent a command) were applied, run, and reverted.
+
+### Follow-ups
+
+- **BL-070** — extend `COVERED_DOCS` to `README.md` and the two `tasks/*.md`, deciding the annotation register per file.
+
 ## 2026-09-01 — BL-069 The 500-line limit is now enforced
 
 **Type:** chore
