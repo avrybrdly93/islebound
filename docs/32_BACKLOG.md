@@ -39,7 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-_Nothing in progress._
+**BL-070** — `README.md` and `tasks/*.md` name the same unbuilt commands, and the checker does not cover them. Claimed 2026-09-03. See `33_CURRENT_TASK.md`.
 
 ## Ready — Phase 0: Foundation
 
