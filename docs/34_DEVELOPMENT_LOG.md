@@ -34,6 +34,59 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-03 — BL-070 `README.md` and `tasks/*.md` are covered, and the checker stops reading prose
+
+**Type:** fix
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~1.5h
+
+### What changed
+
+`tools/check-doc-commands.ts`'s `COVERED_DOCS` is five files instead of two: `README.md`, `tasks/phase_0_foundation.md` and `tasks/phase_1_player_and_world.md` join the two agent-facing documents BL-062 covered. Each newly covered file now says which backlog item builds the commands it names that the repository does not have. `UNBUILT_COMMANDS` gains a third row, `assets:build` → **BL-071**, because nothing in the backlog owned that command at all. And the scan is restricted to fenced code blocks and inline code spans, which is the change that was not in the plan.
+
+### Why it was done this way
+
+**The register was decided per file before any edit, and written into `33` first**, because the backlog item is explicit that the one-line `COVERED_DOCS` diff is not the task and the wording judgement is.
+
+`README.md` is read by a human arriving at the repository, not by an agent working through a verify block. So the note under the quick-start leads with **what will fail today** and carries the backlog id as supporting detail rather than as the point. Two smaller calls followed from the same reading. The architecture section's "gameplay is testable without a browser (`pnpm sim`)" became "through a headless simulation harness" — that section is about the idea, and a reader meeting it there has no use for a command name they cannot run; the command belongs in the quick-start, where it now is and where it is annotated. And the Blender/ffmpeg sentence **keeps** naming `pnpm assets:build`: deleting the name would have made the check green by hiding a real gap, which is the opposite of what the check is for.
+
+**The two `tasks/*.md` needed almost nothing, exactly as the item predicted they might.** A phase-exit line naming a command that does not exist is doing its job — that is what an exit criterion is. `phase_0`'s M0.5 heading already names BL-014 beside the harness and was left untouched; only the Proof line at the very top needed anything, and it took one clause appended to the Backlog-tasks line beneath it. `phase_1`'s exit line already named BL-043, and the ambiguity there was real but narrow: BL-043 owns the worldgen *invariants*, not the *harness* those invariants run in. Four words name BL-014 as the owner of the harness.
+
+**`assets:build` had no owner, and that needed deciding rather than routing around.** `docs/25_ASSET_PIPELINE.md` specifies the pipeline in full and `docs/39_CONTENT_AUTHORING_GUIDE.md` tells authors to run it, but no phase task builds it. A row in `UNBUILT_COMMANDS` is a promise, and a promise needs something real to point at — so **BL-071** was filed in the **Icebox**, with an id, which the Icebox's prose entries do not otherwise carry. The Icebox is the honest home: the command needs Blender, ffmpeg and real source art, so it cannot be Phase 0, and *"moving something out of the Icebox requires a human"* is exactly the right status for it.
+
+### Surprises
+
+1. **Widening what a check reads breaks its unstated assumptions about its inputs, not its logic.** `PNPM_COMMAND` matched `pnpm <word>` anywhere on a line, and that was correct for every document it had ever read, because an agent-facing document writes commands in fences and backticks. `README.md`'s tech summary says "Vite · **pnpm workspace** · three.js" as a plain noun phrase, and the check reported a missing `workspace` script on the first run. No ignore-list entry fixes the class — the next sentence to say "the pnpm store" breaks it again — so the scan now looks only inside fenced blocks and inline code spans. That is strictly safe for what the check is for: a document cannot escape it by putting a command in backticks, because backticks are the only way anyone writes one. **This is BL-062's "a green lint does not verify a lint rule" and BL-069's before it, one turn further on**, and the general form is worth keeping: when you widen a check's inputs, audit what it was quietly assuming about the old ones.
+
+2. **`phase_0_foundation.md`'s M0.5 milestone was already correct, and finding that out was most of the work on that file.** The item allowed for it ("may already be clear enough, in which case say so in the log rather than adding noise") and it turned out to be true for one of the two lines in one of the two files. Recorded here because the temptation, having opened the file, is to annotate both.
+
+3. **The perturbation sweep was run before committing, and `git checkout --` ate the work it was supposed to be testing.** Undoing each perturbation also reverted the still-unstaged doc annotations, so perturbations 2 through 5 ran against a `README.md` that had silently lost its note. Nothing was lost and the results happened to agree — the edits were reapplied, committed, and the whole sweep re-run — but only the second sweep is evidence, and for a while there was a green-looking sequence of red outputs that meant nothing. **Commit the thing a check is supposed to pass on before you start proving it fails.**
+
+### Tests
+
+No test was added, and that is the correct outcome rather than a gap: this task adds no behaviour to test. The suite is unchanged at **342 pass / 0 fail across 88 suites**. `tools/check-doc-commands.ts` *is* the check, and it was graded the way `29_TESTING_STRATEGY.md` §9 asks a check to be graded — by perturbation, five of them:
+
+| perturbation | expected | result |
+|---|---|---|
+| `README.md` loses its `BL-014` | red at README's two `pnpm sim` lines | red, both |
+| `tasks/phase_0_foundation.md` loses its `BL-014` | red at the Proof line | red, lines 3 and 4 |
+| `tasks/phase_1_player_and_world.md` loses its `BL-014` | red at M1.1's exit line | red, line 15 |
+| `pnpm not-a-script` added **inside** README's fence | caught | caught, at its line |
+| the same string added to the **prose** beside it | ignored | ignored |
+
+The last two are the pair that matters: separately either one is consistent with a broken check, and together they are what makes the code-span narrowing a fix rather than a hole.
+
+Full verification: `pnpm lint`, `pnpm typecheck`, `pnpm test` (342/342), `pnpm lint:rules` (all 4 fixtures caught), `pnpm lint:docs` (5 documents clean), `pnpm format:check`, `pnpm build`. `pnpm sim` and `pnpm check:bundle` still do not exist — BL-014 and BL-018 — which is the fact this task is about.
+
+### Follow-ups
+
+- **BL-071** — nothing owns `pnpm assets:build`. Filed to the Icebox with an id so `UNBUILT_COMMANDS` has something real to point at.
+- **BL-072** — the other two `tasks/*.md` that name a `pnpm` command are still uncovered. The interesting half is that `tasks/phase_7_multiplayer.md`'s `pnpm --filter server sim-smoke` is **invisible to the pattern by construction** — `(?!--)` skips a flag, so a filtered script is never read as a command — and a filtered script lives in a workspace package's manifest rather than the root's. Deciding that is out of scope is a legitimate answer; leaving it undocumented is not.
+- **BL-073** — two statements in `README.md` are false. Its status banner still says **"pre-implementation ... code begins at BL-001"** with seventy items landed, and it points agents at **`.github/AI_DEVELOPMENT_WORKFLOW.md`**, which does not exist: the file there is `.github/AI_DEVELOPMENT_WORKFLOW`, no extension, 81 lines against the real document's 89. **Five** documents cite the missing path. Deliberately not fixed here (`35` §3), and the duplicate is the more dangerous half — no check covers the `.github/` copy, so it can rot in silence while `lint:docs` reports clean.
+
+---
+
 ## 2026-09-02 — BL-062 The verify block is runnable, and a check keeps it that way
 
 **Type:** fix

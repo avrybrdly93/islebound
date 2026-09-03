@@ -39,7 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-**BL-070** — `README.md` and `tasks/*.md` name the same unbuilt commands, and the checker does not cover them. Claimed 2026-09-03. See `33_CURRENT_TASK.md`.
+_Nothing in progress._
 
 ## Ready — Phase 0: Foundation
 
@@ -96,14 +96,6 @@ Current phase: **Phase 0 — Foundation**
   - [x] Test-file scope stated explicitly — **tests are in scope**, and they are the whole reason the rule bites. No source file is over 500 (largest: `allocationHarness.ts` at 422), so a sources-only rule would have enforced the limit precisely where nobody was breaking it
 - **Notes:** Filed 2026-08-30 by BL-068. **Done 2026-09-01**, see `34_DEVELOPMENT_LOG.md` and decision **0029**. Three test files split at existing `describe` seams, each into a pair plus a small fixture module: `World.test.ts` 547 → 262 + 278 + 42, `EventBus.test.ts` 533 → 332 + 212 + 41, `Rng.test.ts` 509 → 204 + 235 + 113. **Suite count unchanged at 342 pass / 0 fail across 88 suites**, which is the check that matters for a move (BL-068's Surprise 3). **The rule was verified to fire rather than assumed to** — a 511-line probe reports the violation and was then removed; a rule that cannot fail is not a rule. The fixture modules reverse decision 0028's alternative (c) deliberately: 0028 preferred visible duplication for fixtures that were "three lines and stable", and `Rng`'s shared block is 113 lines of chi-square machinery whose critical values are stated rather than eyeballed. `Query.test.ts` is left at **499**, one under — the next case anybody adds now fails lint, which is the rule working, and the failure says what to do.
 
-### BL-070 — `README.md` and `tasks/*.md` name the same unbuilt commands, and the checker does not cover them
-- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
-- **Description:** Filed 2026-09-02 by BL-062, which fixed exactly the two documents its own criteria named and deliberately left the rest. `README.md` (its quick-start block) names `pnpm test` and `pnpm sim`; `tasks/phase_0_foundation.md` names both as phase proof; `tasks/phase_1_player_and_world.md` names `pnpm sim --check worldgen`. None of them says which backlog item builds what, and `tools/check-doc-commands.ts`'s `COVERED_DOCS` is a deliberate two-file list.
-- **Acceptance criteria:**
-  - [ ] `COVERED_DOCS` includes `README.md` and both `tasks/*.md`, and `pnpm lint:docs` is green with them in
-  - [ ] Whatever annotation each file needs is written in the voice of that file — a `tasks/` phase-exit line is a promise about the future and may already be clear enough, in which case say so in the log rather than adding noise
-- **Notes:** Not a mechanical repeat of BL-062. `README.md` is read by humans arriving at the repository, not by agents following a verify block, so "this arrives with BL-014" may be the wrong register there and a plain "not built yet" may be right; and the `tasks/` files describe phase *exits*, where naming an unbuilt command is the point. Decide the register per file. **The one-line diff is adding the paths to `COVERED_DOCS`** — everything else is judgement about wording.
-
 ### BL-063 — `QueryCache` has no eviction
 - **Phase:** 0 · **Size:** S · **Depends on:** — (**unblocked 2026-08-23**; BL-061 is done) · **Docs:** 04
 - **Description:** `QueryCache` holds one entry per distinct component-set signature and never drops one. That is correct and bounded for the intended use — systems are a fixed list declared in `sim/systems/order.ts`, so the signature set is finite and small — but nothing enforces it. A system that built a signature from data (a query per structure type, per crop species) would grow the map for the lifetime of the session, and each entry holds an array as long as its result.
@@ -120,6 +112,22 @@ Current phase: **Phase 0 — Foundation**
   - [ ] `World.query`'s cast and `Query.test.ts`'s `anyDef<T>` helper are both deleted
   - [ ] `AnyComponentDef` is either re-pointed or removed; if it stays, its doc says which position it is for
 - **Notes:** Filed 2026-08-23 by BL-061, which chose `ComponentDef<unknown>` for `World.query`'s own signature and left `QueryCache`'s alone — changing another module's public signature is the scope expansion `35` §3 forbids. Purely ergonomic; nothing is wrong today, and the one cast is erasure rather than a widening.
+
+### BL-072 — The other `tasks/*.md` name `pnpm` commands and are still uncovered
+- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
+- **Description:** Filed 2026-09-03 by BL-070, which covered exactly the three files its criteria named. Two more `tasks/*.md` name a `pnpm` command: `tasks/phase_3_crafting.md` names `pnpm tools:balance` (no script, no owning item), and `tasks/phase_7_multiplayer.md` names `pnpm --filter server sim-smoke`. The second is invisible to the check by construction — `PNPM_COMMAND`'s `(?!--)` skips a flag, so `pnpm --filter <pkg> <script>` is never read as a command at all, and that is a gap in the pattern rather than in the list.
+- **Acceptance criteria:**
+  - [ ] `COVERED_DOCS` includes every `tasks/*.md`, and `pnpm lint:docs` is green with them in
+  - [ ] Either `pnpm --filter <pkg> <script>` is read and checked against that package's `package.json`, or the pattern's blindness to it is stated in the module header as a deliberate limit
+- **Notes:** The `--filter` half is the interesting one and the reason this is not a one-line repeat of BL-070: a filtered script lives in a workspace package's manifest, not the root's, so checking it means resolving the package first. Deciding it is out of scope is a legitimate answer — but it should be written down, because a silent blind spot in a check is worse than a stated one.
+
+### BL-073 — Two statements in `README.md` are now false
+- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
+- **Description:** Filed 2026-09-03 by BL-070, which was editing `README.md` and deliberately did not ride along (`35` §3). (1) The status banner says **"pre-implementation ... code begins at `docs/32_BACKLOG.md` → BL-001"**; BL-001 through BL-070 have landed, the repository has packages, a build and 342 passing tests, so the first thing a visitor reads is wrong. (2) It points agents at **`.github/AI_DEVELOPMENT_WORKFLOW.md`**, which does not exist — the file at that path is `.github/AI_DEVELOPMENT_WORKFLOW`, with no extension, an 81-line copy of the 89-line `docs/AI_DEVELOPMENT_WORKFLOW.md`. **Five documents** point at the missing path: `README.md`, `CLAUDE.md`, `docs/32_BACKLOG.md`, `docs/34_DEVELOPMENT_LOG.md`, `docs/35_AI_AGENT_RULES.md`.
+- **Acceptance criteria:**
+  - [ ] The status banner says something true about where the repository actually is
+  - [ ] There is exactly one workflow document, and every reference to it resolves — the duplicate is deleted or made a pointer, not left to drift further
+- **Notes:** Overlaps **BL-021** (root documentation files), which owns `README.md`, `CLAUDE.md` and "the `.github/AI_DEVELOPMENT_WORKFLOW.md` reference from the repo root" and is unstarted. Filed separately anyway because BL-021 is broad and unscheduled while these are two specific false statements, one of them the first line a visitor reads. Whoever takes BL-021 first should absorb this and close it. **Note the duplicate is the more dangerous half**: `tools/check-doc-commands.ts` covers `docs/AI_DEVELOPMENT_WORKFLOW.md` and not the `.github/` copy, so the copy can rot silently while the check reports clean.
 
 ### BL-008 — Fixed-timestep game loop
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-059 · **Docs:** 04, 09
@@ -417,6 +425,7 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 - Reverb impulse responses per space (`ConvolverNode`) — may promote into Phase 6
 - Paint mode for recolouring placed pieces without removal — may promote into Phase 4
 - Rainbows after rain — cheap, promote into Phase 6 if time allows
+- **BL-071** — the asset pipeline's build script (`pnpm assets:build`). Specified in full in `docs/25_ASSET_PIPELINE.md` and named by `README.md` and `docs/39_CONTENT_AUTHORING_GUIDE.md`, but **no phase task owns it** — filed 2026-09-03 by BL-070, which needed a real item for `tools/check-doc-commands.ts`'s `UNBUILT_COMMANDS` row to point at. It carries an id, unlike the prose entries above it, for exactly that reason. It needs Blender and ffmpeg and real source art, so it cannot be Phase 0; scheduling it is a human's call, which is what the Icebox is for.
 - Sketch-mode photo filter in the journal's ink style
 - Map screen with fog-of-war and player pins
 - Blueprint save/load for structures
@@ -433,6 +442,15 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-070 — `README.md` and `tasks/*.md` name the same unbuilt commands, and the checker does not cover them
+- **Completed:** 2026-09-03 · **PR:** — (pushed direct to `main`)
+- `tools/check-doc-commands.ts`, `README.md`, `tasks/phase_0_foundation.md`, `tasks/phase_1_player_and_world.md`. `COVERED_DOCS` is five files; `pnpm lint:docs` green. Both acceptance criteria met. Suite unchanged at **342 pass / 0 fail across 88 suites** — this task adds no test because it adds no behaviour to test; the check *is* the test, and it was graded by perturbation instead.
+- **The register was decided per file, which is what the item said the task was.** `README.md` is read by a human arriving at the repository: the note under the quick-start leads with what will fail today and carries the backlog id as supporting detail. The architecture section's "(`pnpm sim`)" became "a headless simulation harness" — that section is about the idea, and the command belongs in the quick-start where a reader can act on it. The Blender/ffmpeg sentence **keeps** naming `pnpm assets:build`, because deleting the name would have hidden the gap rather than recorded it.
+- **The two `tasks/*.md` needed almost nothing, exactly as the item predicted.** A phase-exit line naming an unbuilt command is doing its job. `phase_0`'s M0.5 heading already names BL-014 and was left alone; only the Proof line at the top needed a clause. `phase_1`'s exit line already named BL-043 — the item owning the worldgen *invariants* — and gained four words naming BL-014 as the item owning the *harness*, which is a different thing and was the actual ambiguity.
+- **The finding was not in the list.** `README.md` is the first covered document written for a human rather than for an agent following a verify block, and it broke an assumption the check had been making for free: that every `pnpm <word>` in a covered document is a command. Its "Tech at a glance" line reads "Vite · pnpm workspace · three.js", and the check reported a missing `workspace` script. The scan is now restricted to fenced blocks and inline code spans — where a command a reader is meant to type always lives. Strictly safe: a document cannot escape the check by putting a command in backticks, because that is the only way anyone writes one.
+- **Verified by perturbation, five of them.** Removing the `BL-014` marker from each of the three newly covered files turns `lint:docs` red at exactly that file and line (three cases). `pnpm not-a-script` added inside README's fence is caught; the identical string added to the prose beside it is correctly ignored — the two together are what make the narrowing a fix rather than a hole.
+- Discovered work: **BL-071** (nothing owns `pnpm assets:build`; Icebox, with an id so `UNBUILT_COMMANDS` has something real to point at), **BL-072** (the other two `tasks/*.md`, plus the pattern's blindness to `pnpm --filter <pkg> <script>`), **BL-073** (`README.md`'s status banner says "pre-implementation", and five documents point at a `.github/AI_DEVELOPMENT_WORKFLOW.md` that does not exist).
 
 ### BL-062 — The verify block names three commands that do not exist
 - **Completed:** 2026-09-02 · **PR:** — (pushed direct to `main`)
