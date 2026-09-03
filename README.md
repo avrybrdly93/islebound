@@ -24,7 +24,7 @@ TypeScript (strict) · Vite · pnpm workspace · three.js (WebGL2) · Rapier3D (
 
 > **Simulation is separated from presentation, and the simulation is deterministic, pure, and runnable headlessly.**
 
-No file under `src/sim/` may import three.js, touch the DOM, call `Math.random`, or read a wall clock. Everything else follows: gameplay is testable without a browser (`pnpm sim`), saves are trivially correct, and the Phase 7 multiplayer server reuses the exact same simulation code the client runs.
+No file under `src/sim/` may import three.js, touch the DOM, call `Math.random`, or read a wall clock. Everything else follows: gameplay is testable without a browser through a headless simulation harness, saves are trivially correct, and the Phase 7 multiplayer server reuses the exact same simulation code the client runs.
 
 This is enforced by lint rules and a CI gate, not by good intentions.
 
@@ -39,7 +39,13 @@ pnpm lint && pnpm typecheck
 pnpm build
 ```
 
-Requires Node 22+ and pnpm 9+. Blender and ffmpeg are needed only for rebuilding art assets (`pnpm assets:build`), not for running the game.
+**One of those does not work yet.** `pnpm sim` is the headless determinism
+check, and the harness behind it has not been built — it arrives with
+**BL-014**. Everything else in the block runs today. (`pnpm lint:docs` is what
+keeps this paragraph honest: it fails if this file names a `pnpm` command that
+neither exists nor says which backlog item will build it.)
+
+Requires Node 22+ and pnpm 9+. Blender and ffmpeg are needed only for rebuilding art assets (`pnpm assets:build`), not for running the game — and that command is not built either: the asset pipeline is specified in `docs/25_ASSET_PIPELINE.md` but no scheduled task owns it, which is **BL-071**.
 
 ## Development philosophy
 

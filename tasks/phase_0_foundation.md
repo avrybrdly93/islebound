@@ -1,7 +1,7 @@
 # Phase 0 — Foundation
 
 **Proof:** a grey-box scene renders at 60 fps with a stats overlay, and `pnpm test` + `pnpm sim --ticks 10000 --assert-hash` pass on a clean clone.
-**Backlog tasks:** BL-001 – BL-021 (fully specified in `docs/32_BACKLOG.md`; this file is the narrative map over them).
+**Backlog tasks:** BL-001 – BL-021 (fully specified in `docs/32_BACKLOG.md`; this file is the narrative map over them). The proof line names `pnpm sim` before it exists, which is what a proof line is for — **BL-014** builds it, in M0.5 below.
 
 ---
 

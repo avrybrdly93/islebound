@@ -12,7 +12,7 @@ The island exists and moving around it is pleasurable on its own. This phase car
 ## Milestones (in order)
 
 ### M1.1 — The island's shape (BL-022 → BL-025, BL-039)
-Control map + loader + channel viewer; base elevation with the island mask; hydraulic erosion; feature carving (river, waterfall notch, terraces, harbour, cave pads); region assignment with a debug readout. Exit: silhouette approved from 8 viewpoints; generation deterministic and chunk-order-independent; `pnpm sim --check worldgen` invariants green (BL-043).
+Control map + loader + channel viewer; base elevation with the island mask; hydraulic erosion; feature carving (river, waterfall notch, terraces, harbour, cave pads); region assignment with a debug readout. Exit: silhouette approved from 8 viewpoints; generation deterministic and chunk-order-independent; `pnpm sim --check worldgen` invariants green (BL-043; the harness itself is Phase 0's **BL-014**).
 
 ### M1.2 — Terrain runtime (BL-026 → BL-030)
 `TerrainData` accessors (`heightAt` ≥ 20M calls/s); worker mesher LOD0; splat terrain material; LOD1/2 with skirts; streaming with hysteresis. Exit: run a fixed 300 m route with zero hitches > 4 ms from streaming; no visible cracks at 12 sampled viewpoints.
