@@ -41,12 +41,22 @@
 // unbuilt commands are unbuilt *on purpose*, and the useful thing to tell a
 // session is not "do not run this" but "this arrives with BL-014".
 //
-// WHY THE COVERED LIST IS TWO FILES AND NOT EVERY MARKDOWN FILE. BL-062's
-// description names exactly two documents and its criteria say "both docs".
-// `README.md` and `tasks/*.md` name the same commands and are deliberately
-// out of this task's scope (`35_AI_AGENT_RULES.md` §3 forbids the
-// ride-along); extending COVERED_DOCS to them is BL-070. Adding a file here
-// is a one-line diff, which is the point of the list being explicit.
+// WHY THE COVERED LIST IS FIVE FILES AND NOT EVERY MARKDOWN FILE. BL-062
+// covered the two agent-facing documents its criteria named. BL-070 added
+// `README.md` and the two `tasks/*.md` that name the same commands, and
+// stopped there because those are the three its criteria name. The remaining
+// `tasks/*.md` that name a `pnpm` command are BL-072, filed rather than
+// ridden along (`35_AI_AGENT_RULES.md` §3). Adding a file here is a one-line
+// diff, which is the point of the list being explicit.
+//
+// BL-070's real finding was not the list. `README.md` is the first covered
+// document written for a human rather than for an agent following a verify
+// block, and it broke an assumption this check had been making for free:
+// that every `pnpm <word>` in a covered document is a command. Its "Tech at
+// a glance" line says "pnpm workspace" as a plain noun phrase. See
+// `commandText` — the scan is now restricted to fenced blocks and inline
+// code spans, which is where a command a reader is meant to type always
+// lives.
 //
 // Why a script and not a test: the same reason `check-lint-rules.ts` gives —
 // `pnpm test` is an alias for `node --test` over `packages/*/src/**`, and
@@ -60,10 +70,44 @@
 import { readFileSync } from 'node:fs';
 
 /** Documents whose `pnpm` commands are checked, relative to the repository root. */
-const COVERED_DOCS: readonly string[] = ['CLAUDE.md', 'docs/AI_DEVELOPMENT_WORKFLOW.md'];
+const COVERED_DOCS: readonly string[] = [
+  'CLAUDE.md',
+  'docs/AI_DEVELOPMENT_WORKFLOW.md',
+  'README.md',
+  'tasks/phase_0_foundation.md',
+  'tasks/phase_1_player_and_world.md',
+];
 
 /** Matches `pnpm <script>` — the script name only, stopping before any flag or argument. */
 const PNPM_COMMAND = /\bpnpm\s+(?!--)([a-z][a-z0-9:-]*)/g;
+
+/** Opens or closes a fenced code block. */
+const FENCE = /^\s*```/;
+
+/** An inline code span: the text between a matched pair of single backticks. */
+const CODE_SPAN = /`([^`]+)`/g;
+
+/**
+ * The parts of `line` that are a *command reference* rather than prose.
+ *
+ * Inside a fenced block the whole line is code. Outside one, only the inline
+ * code spans are — and that distinction is load-bearing rather than tidiness.
+ * BL-070 extended COVERED_DOCS to `README.md`, whose "Tech at a glance" line
+ * reads "Vite · pnpm workspace · three.js": prose, describing what kind of
+ * repository this is. A whole-line search reads it as `pnpm workspace` and
+ * reports a missing script, and no ignore-list entry fixes the class — the
+ * next sentence to say "the pnpm store" or "pnpm workspaces" breaks it again.
+ *
+ * The narrowing is strictly safe for what the check is for: every real
+ * reference in every covered document is already written as code, because a
+ * command a reader is meant to type is formatted as one. It removes false
+ * positives without weakening the rule — a document cannot escape the check
+ * by putting a command in backticks, which is the only way anyone writes one.
+ */
+function commandText(line: string, insideFence: boolean): string[] {
+  if (insideFence) return [line];
+  return [...line.matchAll(CODE_SPAN)].map((match) => match[1] ?? '');
+}
 
 /**
  * Script names that are pnpm's own, not this repository's, so `package.json`
@@ -92,6 +136,7 @@ const PNPM_BUILTINS: ReadonlySet<string> = new Set([
 const UNBUILT_COMMANDS: ReadonlyMap<string, string> = new Map([
   ['sim', 'BL-014'],
   ['check:bundle', 'BL-018'],
+  ['assets:build', 'BL-071'],
 ]);
 
 interface Finding {
@@ -138,13 +183,25 @@ function annotationScope(lines: readonly string[], index: number): string {
 function findingsIn(doc: string, scripts: ReadonlySet<string>): Finding[] {
   const lines = read(doc).split('\n');
   const findings: Finding[] = [];
+  let insideFence = false;
 
   for (const [index, line] of lines.entries()) {
-    for (const match of line.matchAll(PNPM_COMMAND)) {
+    if (FENCE.test(line)) {
+      insideFence = !insideFence;
+      continue;
+    }
+    const seen = new Set<string>();
+    for (const match of commandText(line, insideFence).flatMap((text) => [
+      ...text.matchAll(PNPM_COMMAND),
+    ])) {
       const script = match[1];
       if (script === undefined) continue;
       if (PNPM_BUILTINS.has(script)) continue;
       if (scripts.has(script)) continue;
+      // One finding per script per line: a line naming the same unbuilt
+      // command twice has one problem, not two.
+      if (seen.has(script)) continue;
+      seen.add(script);
 
       const owner = UNBUILT_COMMANDS.get(script);
       if (owner === undefined) {
