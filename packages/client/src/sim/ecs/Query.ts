@@ -60,6 +60,50 @@
  * corrupt every later query with the same signature, and that bug would
  * surface arbitrarily far away.
  *
+ * ## Signatures must be statically known, and that is checked (BL-063)
+ *
+ * The map holds one entry per distinct signature and **drops none**. That is
+ * correct and bounded for the design `04` §4.3 describes — systems are a fixed
+ * list in `sim/systems/order.ts`, so the set of signatures a build can produce
+ * is finite, small, and decided at authoring time. It stops being bounded the
+ * moment a signature is built from *data*: a query per structure type or per
+ * crop species grows the map for the lifetime of the session, and each entry
+ * holds an array as long as its result.
+ *
+ * So the rule is: **`query` accepts only statically-known signatures** — the
+ * defs at a call site are written there, not assembled from content. It is a
+ * rule rather than a hope because {@link SIGNATURE_LIMIT} enforces it: a
+ * *new* signature beyond the limit throws, naming the rule and what to do.
+ * Failing loudly is this package's existing answer to exhaustion
+ * ({@link EntityAllocator} refuses to alias when it runs out rather than
+ * quietly recycling), and it is deterministic — the same call sequence throws
+ * at the same point in every build, so `sim/`'s hashability is unaffected.
+ *
+ * ## Why not eviction (LRU on a cap, or drop-if-unqueried-for-N-ticks)
+ *
+ * BL-063 offers eviction as the alternative and it is deliberately not taken.
+ *
+ * 1. **It would be a guess.** Nothing in the repository builds a dynamic
+ *    signature, so there is no caller whose behaviour would size the policy.
+ *    `35` §3 forbids inventing one anyway.
+ * 2. **It makes the cache slower in exactly the case it is for.** BL-059
+ *    measured a cold intersection at **1.00 ms** against **0.0784 ms** cached.
+ *    Evicting a signature that is still in the system list converts a hit into
+ *    that cold path — about 13x — on a 6 ms CPU budget. An LRU sized slightly
+ *    too small thrashes; sized generously it never evicts, which is this
+ *    limit with more machinery. Drop-if-unqueried-for-N-ticks has the same
+ *    shape and additionally needs a tick number, which this class deliberately
+ *    does not observe (see **Purity** below).
+ * 3. **There is no process-lifetime leak to fix.** One `QueryCache` per
+ *    `World`, constructed with it and unreachable from outside, so the map
+ *    dies with the world. The risk is unbounded growth *within* one session,
+ *    which a limit addresses directly and an eviction policy would hide.
+ *
+ * If a caller ever genuinely needs many signatures, the honest change is to
+ * raise {@link SIGNATURE_LIMIT} deliberately, in a diff a reviewer sees —
+ * or, if the set is truly unbounded, to implement eviction *then*, against a
+ * real access pattern rather than an imagined one.
+ *
  * ## Purity
  *
  * Under `sim/`: no clock, no DOM, no `Math.random`, no module-level mutable
@@ -76,6 +120,23 @@ import type { EntityAllocator, EntityId } from '@sim/ecs/EntityAllocator';
 
 /** A def with its value type erased, which is all a query needs. */
 export type AnyComponentDef = ComponentDef<never>;
+
+/**
+ * The most distinct signatures one cache will hold before it refuses a new one.
+ *
+ * **Reasoned, not picked.** `05` §1 lists thirteen files under `sim/systems/`,
+ * and `SYSTEM_ORDER` is the whole set of systems a build runs. At a handful of
+ * distinct queries each, a fully populated Phase-6 game is order-50 signatures,
+ * so 64 clears any static set this design admits while sitting far below what a
+ * signature derived from content reaches — a query per crop species passes it
+ * within one save file.
+ *
+ * It is therefore a **tripwire for a design error**, not a capacity limit to be
+ * tuned: hitting it means a call site is assembling defs from data, which is
+ * the thing the module comment rules out. Raising it is a one-line diff a
+ * reviewer sees, which is the intended way to disagree with it.
+ */
+export const SIGNATURE_LIMIT = 64;
 
 /** One cached intersection, with everything needed to decide if it is stale. */
 interface CachedQuery {
@@ -184,6 +245,24 @@ export class QueryCache {
       this.recompute(cached);
       this.computations += 1;
       return cached.result;
+    }
+
+    // BL-063. Only a genuinely new signature can reach here -- a cached one
+    // returned above, fresh or recomputed -- so a build with a fixed system
+    // list stops adding entries early and never tests this again. Checked
+    // *before* the stores are resolved so a refused query has no side effect
+    // beyond the def ids already assigned in `signatureIds`, which are
+    // idempotent.
+    if (this.cache.size >= SIGNATURE_LIMIT) {
+      throw new Error(
+        `QueryCache: refusing a ${String(this.cache.size + 1)}th distinct query signature ` +
+          `(limit ${String(SIGNATURE_LIMIT)}). Queries must use statically-known component ` +
+          'sets -- defs written at the call site, not assembled from content -- because the ' +
+          'cache holds one entry per signature and never evicts. Hitting this almost always ' +
+          'means a signature is being built from data (a query per structure type, per crop ' +
+          'species). Fix the call site; or, if the set really is this large and static, raise ' +
+          'SIGNATURE_LIMIT in sim/ecs/Query.ts deliberately. See BL-063.',
+      );
     }
 
     const stores = this.storesFor(defs);
