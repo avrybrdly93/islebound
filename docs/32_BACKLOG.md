@@ -39,7 +39,9 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-_Nothing in progress._
+**BL-063** — `QueryCache` has no eviction. Claimed 2026-09-04; plan and the
+decision behind it are in `33_CURRENT_TASK.md`. Entry stays in the Ready list
+below until it moves to Done, per BL-062's precedent.
 
 ## Ready — Phase 0: Foundation
 
