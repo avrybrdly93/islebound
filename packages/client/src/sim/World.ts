@@ -87,9 +87,14 @@
  *   item's decision, not this one's.
  * - **No fixed-timestep loop.** `step(dt)` is what the accumulator in `04` §4.1
  *   calls; the accumulator itself is BL-008.
- * - **No query-cache eviction.** BL-063, which was filed against
- *   {@link QueryCache} and depends on this task precisely because the answer
- *   may be "`World` owns the lifetime".
+ * - **No query-cache eviction, deliberately and now on the record.** BL-063
+ *   asked for eviction *or* a checked rule, and the answer turned out to be the
+ *   one this class made available: `World` owns the cache's lifetime — one
+ *   {@link QueryCache} constructed here and unreachable from outside — so the
+ *   map dies with the world and there is no process-lifetime leak. What is
+ *   enforced instead is that signatures are statically known, by a limit in
+ *   `Query.ts` that refuses a new one past `SIGNATURE_LIMIT`. See that module's
+ *   comment for why eviction would make the cache *slower* rather than safer.
  */
 
 import { EventBus, type EventMap } from '@core/EventBus';
@@ -245,8 +250,17 @@ export class World<M extends EventMap = Record<never, never>> {
    * `ComponentStore`'s module comment for why that is not the same as sorting
    * the handles.
    *
+   * **Signatures must be statically known** (BL-063): the defs at a call site
+   * are written there, not assembled from content. The cache holds one entry
+   * per distinct signature and never evicts, so a signature built from data — a
+   * query per structure type, per crop species — would grow it for the lifetime
+   * of the world. `Query.ts` enforces this rather than trusting it, and its
+   * module comment says why that is the right answer here instead of eviction.
+   *
    * @throws if called with no defs; `QueryCache` explains why that is not
    *   "every live entity" ({@link World.liveEntities} is).
+   * @throws if this would be the `SIGNATURE_LIMIT + 1`-th distinct signature on
+   *   this world, which means the rule above has been broken.
    */
   query(...defs: readonly ComponentDef<unknown>[]): readonly EntityId[] {
     // `QueryCache.query` takes `ComponentDef<never>` -- the *bottom* of the

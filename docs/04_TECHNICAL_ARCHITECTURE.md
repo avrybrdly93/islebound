@@ -117,6 +117,12 @@ class World {
   *mid*-tick is reflected immediately, which §4.4's intent-in/event-out shape makes the
   normal case — and also cheaper, since a cache nothing invalidated survives across ticks.
   See `sim/ecs/Query.ts` and decision 0024.
+- Query **signatures must be statically known** (BL-063): the component defs at a call site are
+  written there, not assembled from content. The cache holds one entry per signature and never
+  evicts — correct and bounded because systems are a fixed list in `sim/systems/order.ts`, and
+  unbounded the moment a signature is derived from data. `Query.ts` enforces this with a limit
+  rather than trusting it, and explains why eviction would make the cache *slower* rather than
+  safer. See decision 0030.
 
 Component list (initial): `Transform`, `Velocity`, `PlayerTag`, `Renderable`, `Collider`, `Interactable`, `ResourceNode`, `Inventory`, `ItemStack`, `Structure`, `Crop`, `Animal`, `AiState`, `Growth`, `Lifetime`, `NetSynced`, `Owner`.
 
