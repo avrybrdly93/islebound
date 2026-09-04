@@ -34,6 +34,104 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-04 — BL-063 `QueryCache` is bounded by a checked rule, not by eviction
+
+**Type:** feature
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~1h
+
+### What changed
+`QueryCache` now refuses a *new* component-set signature once it already holds
+`SIGNATURE_LIMIT` (64) of them, throwing with a message that names the rule
+broken, the likely cause, the constant to raise and the backlog item. The rule
+the limit enforces is stated in `Query.ts`'s module comment and repeated on
+`World.query`, which is what systems actually call: **query signatures must be
+statically known** — the defs at a call site are written there, not assembled
+from content. `04` §4.3 gained a bullet, `World`'s module comment lost its "No
+query-cache eviction" limitation note, and decision **0030** carries the
+argument.
+
+### Why it was done this way
+BL-063's first criterion offered eviction *or* a documented-and-checked rule.
+The second was taken for three reasons, and the middle one is what decides it.
+
+An eviction policy would be a guess: nothing in the repository builds a dynamic
+signature, so no caller's behaviour would size it, and `35` §3 forbids
+inventing one anyway. **More importantly it would make the cache slower in
+exactly the case it exists for.** Decision 0024's version-keyed invalidation
+lets a cached entry survive across ticks, and BL-059 measured the cold
+intersection at **1.00 ms** against **0.0784 ms** cached. Evicting a signature
+that is still in the system list converts a hit into that ~13x cold path,
+against a 6 ms CPU budget. An LRU sized slightly too small thrashes; one sized
+generously never evicts, which is this limit with more moving parts. And there
+is no process-lifetime leak to fix: one `QueryCache` per `World`, unreachable
+from outside, so the map dies with the world — the real risk is growth *within*
+a session, which a limit bounds directly and eviction would hide behind a
+bounded-looking `size`.
+
+64 is reasoned rather than picked. `05` §1 lists thirteen system files; a
+handful of distinct queries each puts a fully populated Phase-6 game at
+order-50, while a signature derived from content passes 64 inside one save
+file. So it is a tripwire for a design error, not a capacity to tune — and the
+error message says exactly that, because the message is the entire user
+interface of this check.
+
+Throwing rather than warning follows this package's existing answer to
+exhaustion: `EntityAllocator` refuses to alias when it runs out rather than
+quietly recycling (BL-007 criterion 4). It is deterministic — the same call
+sequence throws at the same point in every build — so `sim/`'s hashability is
+untouched.
+
+### Surprises
+1. **The `max-lines` rule fired on its first real encounter, exactly where
+   decision 0029 said it would.** That decision left `Query.test.ts` at 499 of
+   500 and predicted in as many words: *"the next case anybody adds now fails
+   lint, which is the rule working, and the failure says what to do."* This was
+   that case. It cost nothing — the tests went into a new `Query.limit.test.ts`
+   at the seam this item creates, which is a better home than the bottom of the
+   intersection-semantics file anyway. **The prediction being right is the
+   finding**: a limit left one line under its threshold is a live tripwire, not
+   a rounding artefact, and whoever left it there knew it.
+2. **The item's stated blocker had already dissolved and the notes said so.**
+   BL-063 depended on BL-061 because the answer "might" be that `World` owns
+   the lifetime. It is, and has been since 2026-08-23 — which meant the hard
+   part was not designing an eviction policy but noticing that the task no
+   longer needed one. An item whose notes record *why it was filed* is what made
+   that visible; a one-line "add eviction to QueryCache" would have produced an
+   LRU.
+3. **The interesting boundary case is the one from below.** The obvious test is
+   that a 65th signature is refused. The one that would have caught a worse bug
+   is that a 64th is *accepted*: an off-by-one there crashes a build that is
+   inside its stated budget, which is strictly worse than the unbounded map
+   this item started from.
+
+### Tests
+Seven cases in a new `packages/client/src/sim/ecs/Query.limit.test.ts`: the
+boundary from below (64 accepted) and above (65 refused); the message naming
+the rule, the constant, the cause and the item; the cache staying usable after
+a refusal, with a retry that still throws rather than being served a
+half-registered entry; re-queries, reorderings and repeats not counting toward
+the limit; the budget being per-cache rather than module-level state; and a
+stand-in static workload sitting far below the limit.
+
+**Verified able to fail rather than assumed to**, following decision 0029's
+precedent. Three perturbations, tree restored and re-run green after each:
+deleting the check fails 3 cases; weakening `>=` to `>` so a 65th is admitted
+fails 3; changing the constant fails the case that pins its value in the
+message.
+
+Suite **342 → 349 pass / 0 fail**, **88 → 89 suites**. `lint`, `lint:rules`,
+`lint:docs` and `typecheck` clean.
+
+### Follow-ups
+- None created. **BL-065** was deliberately not ridden along (`35` §3) though it
+  touches the same signature — `QueryCache.query` still takes
+  `ComponentDef<never>`, the bottom of the family, where the fix is the top —
+  and it is now the topmost ready item.
+
+---
+
 ## 2026-09-03 — BL-070 `README.md` and `tasks/*.md` are covered, and the checker stops reading prose
 
 **Type:** fix

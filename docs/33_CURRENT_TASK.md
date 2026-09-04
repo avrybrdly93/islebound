@@ -4,74 +4,70 @@
 
 ---
 
-## Status: IN_PROGRESS — BL-063
+## Status: IDLE
 
-**`QueryCache` has no eviction.** Phase 0 · Size S · Docs to read: `04`.
-Claimed 2026-09-04 before any code.
+No task in progress. **BL-063 is complete** (2026-09-04) — `QueryCache` refuses
+a new signature past `SIGNATURE_LIMIT` (64), the rule it enforces is stated on
+`Query.ts` and `World.query`, and decision **0030** carries the argument. See
+`34_DEVELOPMENT_LOG.md` 2026-09-04; its **Surprises** 1 and 3 are the ones
+worth reading.
 
-### Selection, verified rather than inherited
+Suite **342 → 349 pass / 0 fail across 89 suites**. `lint`, `lint:rules`,
+`lint:docs`, `typecheck` all clean.
 
-`AI_DEVELOPMENT_WORKFLOW.md` §2 says the topmost unblocked task in the current
-phase's Ready list. Walked the list in `32` in order:
+## Next action for an agent
 
-| item | verdict |
-|---|---|
-| BL-056 | **Phase 1**, not a candidate under phase discipline. Thirteenth session running |
-| BL-059, BL-066, BL-068, BL-069 | done |
-| BL-067 | skipped **on its own instruction** (*"should not be taken before `23` has a shape"*), re-checked with the grep the previous handoff names: `23_SAVE_SYSTEM.md` mentions `EntitySave` exactly once, at §2 line 38, and defines it nowhere — so its first criterion still presumes a component-level format that does not exist |
-| **BL-063** | **topmost actually ready** |
+The topmost unblocked task in Phase 0's Ready list, per
+`AI_DEVELOPMENT_WORKFLOW.md` §2.
 
-### The decision, made before coding
+**Read the file, do not trust this line.** In list order:
 
-Criterion 1 offers two answers. **Taking the second: document that only
-statically-known signatures are accepted, and check it.** Not eviction.
+- **BL-056** is still **Phase 1** — not a candidate under phase discipline.
+  Fourteenth session running.
+- **BL-067** is still the one to skip, **on its own instruction** rather than
+  on your judgement. Re-checked this session with the one grep the previous
+  handoff names: `23_SAVE_SYSTEM.md` mentions `EntitySave` exactly once (§2,
+  line 38) and defines it nowhere, so there is still no *component-level*
+  format, which is what BL-067's first criterion presumes.
+- **BL-063** — done, this session, and moved to Done rather than marked in
+  place (BL-062's precedent; the Ready list still carries four older items
+  marked `**DONE**` in place, which is an inconsistency in the file, not a
+  second convention to copy).
+- **BL-065** is now the topmost that is actually ready.
 
-Three reasons, in order of weight:
+Then **BL-072**, **BL-073**, then **BL-008**.
 
-1. **`35` §3.** An eviction policy without a caller that needs one is a guess,
-   and the item's own notes say so. Nothing in the repository builds a dynamic
-   signature.
-2. **Eviction on this cache is a pessimisation, and the numbers are already
-   measured.** BL-059 recorded a cold intersection at **1.00 ms** against
-   **0.0784 ms** cached — about 13x. Every eviction of a still-live signature
-   converts a hit into that cold path, so an LRU sized even slightly wrong
-   makes the cache worse than no eviction at all, on a budget of 6 ms CPU.
-3. **The lifetime question is already answered.** One `QueryCache` per `World`,
-   constructed with it and unreachable from outside, so the map dies with the
-   world. There is no process-lifetime leak to fix — only an unbounded-growth
-   *risk within one session*, which is what the check addresses.
+## Why BL-065 is a reasonable next task, and what makes it larger than it looks
 
-### Plan
+BL-065 is `QueryCache.query` taking `ComponentDef<never>` — the *bottom* of the
+def family, which nothing but itself is assignable to under
+`exactOptionalPropertyTypes` — where the correct parameter is the *top*,
+`ComponentDef<unknown>`, because a query never reads a def's value type.
 
-1. `QueryCache` gains a stated cap on distinct signatures, and throws when a
-   **new** signature would exceed it. Loud, deterministic, and early — matching
-   this codebase's existing precedent for exhaustion (`EntityAllocator` fails
-   loudly rather than aliasing, BL-007 criterion 4).
-2. The module comment states the rule (`query` accepts only statically-known
-   signatures), **and names eviction — LRU on a cap, drop-if-unqueried-for-N-
-   ticks — with why it was not chosen.** That is criterion 2, and it is the
-   half most likely to be skipped.
-3. `World.query`'s doc carries the same rule, since that is the signature
-   systems actually call; `World`'s module comment loses its "No query-cache
-   eviction" limitation note, which stops being true.
-4. Tests: the cap fires at the boundary and not before; the message names
-   BL-063 and says what to do; a normal static workload never approaches it;
-   the throw does not corrupt the cache.
-5. `04` §4.3 gains one sentence, since it is the doc that describes the cache.
+Two things to know before starting, both learned adjacent to it:
 
-### The cap, and why it is not a guess
+1. **The direction is already settled and written down.** Decision 0027 chose
+   exactly this widening one level up for `ErasedStore`, and recorded the
+   reasoning: every member a query uses is covariant in `T`, so a
+   `ComponentDef<T>` satisfies the widened type structurally with no assertion.
+   0027 also says in as many words that it *does not* solve BL-065. Read it
+   first; you are applying a decided principle, not making a new decision.
+2. **Its criteria reach into two other files.** `World.query`'s erasing cast
+   and `Query.test.ts`'s `anyDef<T>` helper are both named for deletion. Note
+   that `Query.limit.test.ts`, added this session, carries **its own copy of
+   `anyDef<T>`** — so that is a third call site the criteria do not name, and
+   deleting only the two named ones leaves the helper alive next door.
 
-`SYSTEM_ORDER` is data in one file and empty today; `05` §1 lists **thirteen**
-system files as later items. At a handful of distinct queries each that is
-order-50, so the cap is **64** — comfortably above any static set this design
-admits, and far below the growth a data-derived signature produces. Raising it
-is a deliberate one-line edit with a reviewer, which is the point.
+`Query.test.ts` is at **499 of 500 lines** and `Query.limit.test.ts` at 169.
+Deleting `anyDef` shortens the first, so BL-065 has room; anything that *adds*
+to `Query.test.ts` does not, and decision 0029 is explicit that this is the
+rule working rather than a problem to route around.
 
-### Not in scope
+## The standing question, unchanged
 
-- **BL-065** (`QueryCache.query` takes the bottom of the def family) is the
-  next item in the list and touches the same signature. Deliberately not ridden
-  along: `35` §3 forbids it, and BL-065's own criteria include deleting a cast
-  in `World` and a helper in `Query.test.ts`.
-- Eviction itself, per the decision above.
+**Five** `S` items now sit ahead of **BL-008**, the `M` the phase is actually
+for. Every one of them was filed by a previous session against code it had just
+written, which is the backlog working as intended — but a phase that only ever
+services its own discoveries does not reach its exit criteria. Worth a human
+deciding whether BL-008 should be pinned ahead of the `S` queue.
 

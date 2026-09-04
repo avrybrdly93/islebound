@@ -39,9 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-**BL-063** — `QueryCache` has no eviction. Claimed 2026-09-04; plan and the
-decision behind it are in `33_CURRENT_TASK.md`. Entry stays in the Ready list
-below until it moves to Done, per BL-062's precedent.
+_Nothing in progress._
 
 ## Ready — Phase 0: Foundation
 
@@ -97,14 +95,6 @@ below until it moves to Done, per BL-062's precedent.
   - [x] The soft limit is decided — **not** enforced, and `CLAUDE.md` now says so rather than rendering 300 and 500 identically as numbers with no indication that neither was checked. A `warn` in a CI-only lint is noise; fourteen files sit over 300 and every one is deliberate
   - [x] Test-file scope stated explicitly — **tests are in scope**, and they are the whole reason the rule bites. No source file is over 500 (largest: `allocationHarness.ts` at 422), so a sources-only rule would have enforced the limit precisely where nobody was breaking it
 - **Notes:** Filed 2026-08-30 by BL-068. **Done 2026-09-01**, see `34_DEVELOPMENT_LOG.md` and decision **0029**. Three test files split at existing `describe` seams, each into a pair plus a small fixture module: `World.test.ts` 547 → 262 + 278 + 42, `EventBus.test.ts` 533 → 332 + 212 + 41, `Rng.test.ts` 509 → 204 + 235 + 113. **Suite count unchanged at 342 pass / 0 fail across 88 suites**, which is the check that matters for a move (BL-068's Surprise 3). **The rule was verified to fire rather than assumed to** — a 511-line probe reports the violation and was then removed; a rule that cannot fail is not a rule. The fixture modules reverse decision 0028's alternative (c) deliberately: 0028 preferred visible duplication for fixtures that were "three lines and stable", and `Rng`'s shared block is 113 lines of chi-square machinery whose critical values are stated rather than eyeballed. `Query.test.ts` is left at **499**, one under — the next case anybody adds now fails lint, which is the rule working, and the failure says what to do.
-
-### BL-063 — `QueryCache` has no eviction
-- **Phase:** 0 · **Size:** S · **Depends on:** — (**unblocked 2026-08-23**; BL-061 is done) · **Docs:** 04
-- **Description:** `QueryCache` holds one entry per distinct component-set signature and never drops one. That is correct and bounded for the intended use — systems are a fixed list declared in `sim/systems/order.ts`, so the signature set is finite and small — but nothing enforces it. A system that built a signature from data (a query per structure type, per crop species) would grow the map for the lifetime of the session, and each entry holds an array as long as its result.
-- **Acceptance criteria:**
-  - [ ] Either an eviction policy exists (LRU on a cap, or drop-if-unqueried-for-N-ticks), or `World.query` is documented as accepting only statically-known signatures and something checks it
-  - [ ] Whichever is chosen, the *other* is named in a comment with why it was not
-- **Notes:** Filed 2026-08-22 by BL-059. Deliberately not fixed inline: an eviction policy is a guess without a caller that needs one, and `35` §3 forbids expanding scope. Depends on BL-061 because the answer may be "`World` owns the lifetime and clears on world teardown", which needs a `World`. **Not urgent** — nothing in the repository builds a dynamic signature today, and the entry-count is observable via `QueryCache.size` if anyone wants to check, now also via `World.queryStats.size`. **Unblocked 2026-08-23**: `World` exists, and it does own the cache's lifetime — one `QueryCache` per `World`, constructed with it and unreachable from outside — so "the world owns it and it dies with the world" is now an available answer rather than a hypothesis.
 
 ### BL-065 — `QueryCache.query` takes the bottom of the def family, so every direct caller casts
 - **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** 04
@@ -444,6 +434,17 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-063 — `QueryCache` has no eviction
+- **Completed:** 2026-09-04 · **PR:** — (pushed direct to `main`)
+- `sim/ecs/Query.ts`, new `sim/ecs/Query.limit.test.ts`, `sim/World.ts`, `docs/04` §4.3, decision **0030**. Suite **342 → 349 pass / 0 fail**, **88 → 89 suites**. `lint`, `lint:rules`, `lint:docs`, `typecheck` all clean.
+- **Criterion 1 answered by its second branch, not by eviction.** `query` accepts only statically-known signatures, and `SIGNATURE_LIMIT = 64` checks it — a *new* signature past the limit throws, naming the rule, the likely cause, the constant to raise and this item. **Criterion 2 is answered in `Query.ts`'s module comment**, at length: LRU-on-a-cap and drop-if-unqueried-for-N-ticks are both named, with why neither was taken.
+- **The reason eviction lost is measured, not aesthetic.** Decision 0024 makes a cached entry survive across ticks, and BL-059 measured the cold intersection at **1.00 ms** against **0.0784 ms** cached. Evicting a signature that is still in the system list converts a hit into that ~13x cold path on a 6 ms CPU budget — so an LRU sized slightly small thrashes, and one sized generously never evicts, which is this limit with more moving parts. Drop-if-unqueried-for-N-ticks additionally needs a tick number that `QueryCache` deliberately does not observe.
+- **The lifetime question the item was waiting on is settled and turned out not to need a policy at all.** One `QueryCache` per `World`, constructed with it and unreachable from outside, so the map dies with the world; there is no process-lifetime leak, only unbounded growth *within* a session, which is what the limit bounds.
+- **64 is reasoned, not picked.** `05` §1 lists thirteen system files; a handful of distinct queries each is order-50, while a content-derived signature (a query per crop species) passes 64 inside one save file. It is a tripwire for a design error, not a capacity to tune, and the message says so.
+- **Verified able to fail, following BL-069's precedent.** Three perturbations, tree restored and re-run green after each: deleting the check fails 3 cases; weakening `>=` to `>` so a 65th is admitted fails 3; changing the constant fails the case pinning its value in the message. The boundary is also pinned **from below** — 64 must be *accepted* — because an off-by-one there would crash a build inside its stated budget, which is worse than the unbounded map this started from.
+- **The tests are in a new file and that is `max-lines` working as designed.** Decision 0029 left `Query.test.ts` at 499 of 500 and predicted "the next case anybody adds now fails lint". This was that case; split at the seam BL-063 creates rather than by cutting the existing file.
+- **BL-065 was deliberately not ridden along** (`35` §3) though it touches the same signature and is now the topmost ready item.
 
 ### BL-070 — `README.md` and `tasks/*.md` name the same unbuilt commands, and the checker does not cover them
 - **Completed:** 2026-09-03 · **PR:** — (pushed direct to `main`)
