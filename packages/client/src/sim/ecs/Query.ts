@@ -118,9 +118,6 @@ import type { ComponentRegistry } from '@sim/ecs/ComponentRegistry';
 import type { ComponentStore } from '@sim/ecs/ComponentStore';
 import type { EntityAllocator, EntityId } from '@sim/ecs/EntityAllocator';
 
-/** A def with its value type erased, which is all a query needs. */
-export type AnyComponentDef = ComponentDef<never>;
-
 /**
  * The most distinct signatures one cache will hold before it refuses a new one.
  *
@@ -141,7 +138,7 @@ export const SIGNATURE_LIMIT = 64;
 /** One cached intersection, with everything needed to decide if it is stale. */
 interface CachedQuery {
   /** The stores the result was computed from, in signature order. */
-  readonly stores: readonly ComponentStore<never>[];
+  readonly stores: readonly ComponentStore<unknown>[];
   /** Each store's `version` at computation time, parallel to {@link stores}. */
   readonly storeVersions: number[];
   /** The allocator's `version` at computation time. */
@@ -165,7 +162,7 @@ export class QueryCache {
   private readonly registry: ComponentRegistry;
 
   /** Stable small integer per def, assigned on first sight. */
-  private readonly defIds = new Map<AnyComponentDef, number>();
+  private readonly defIds = new Map<ComponentDef<unknown>, number>();
 
   /** Cached results by signature. */
   private readonly cache = new Map<string, CachedQuery>();
@@ -220,13 +217,24 @@ export class QueryCache {
    * a mutation expecting it to update; call again, which is a `Map` lookup and
    * a handful of integer comparisons when nothing changed.
    *
+   * `defs` is `ComponentDef<unknown>` — the **top** of the def family, so
+   * every `ComponentDef<T>` is one and no caller casts. That is deliberate and
+   * it is the whole of BL-065: this parameter used to be `ComponentDef<never>`,
+   * the *bottom*, which under `exactOptionalPropertyTypes` nothing but itself
+   * is assignable to, so every direct caller carried an erasing cast and both
+   * test files carried a helper to write one. A query never reads a def's
+   * value type — `defs` is used only for identity, in {@link signatureIds},
+   * and to look stores up — so the top is the correct position and loses
+   * nothing. Same widening, and the same reasoning, as decision **0027** chose
+   * one level up for `ErasedStore`.
+   *
    * @throws if called with no defs. "Every live entity" is a real question
    *   with a real answer — `EntityAllocator.liveEntities()` — and it is not
    *   this one; an empty intersection almost always means a spread that came
    *   out empty, and returning everything would turn that into a system
    *   silently operating on the whole world.
    */
-  query(...defs: readonly AnyComponentDef[]): readonly EntityId[] {
+  query(...defs: readonly ComponentDef<unknown>[]): readonly EntityId[] {
     if (defs.length === 0) {
       throw new Error(
         'QueryCache.query: a query needs at least one component definition. For every live ' +
@@ -286,7 +294,7 @@ export class QueryCache {
    * second one, and leaving it in would drive an extra `has()` per entity for
    * a test that cannot fail.
    */
-  private signatureIds(defs: readonly AnyComponentDef[]): number[] {
+  private signatureIds(defs: readonly ComponentDef<unknown>[]): number[] {
     const ids: number[] = [];
     for (const def of defs) {
       let id = this.defIds.get(def);
@@ -300,9 +308,9 @@ export class QueryCache {
   }
 
   /** The stores a signature spans, deduplicated the same way. */
-  private storesFor(defs: readonly AnyComponentDef[]): ComponentStore<never>[] {
-    const stores: ComponentStore<never>[] = [];
-    const seen = new Set<AnyComponentDef>();
+  private storesFor(defs: readonly ComponentDef<unknown>[]): ComponentStore<unknown>[] {
+    const stores: ComponentStore<unknown>[] = [];
+    const seen = new Set<ComponentDef<unknown>>();
     for (const def of defs) {
       if (seen.has(def)) continue;
       seen.add(def);
@@ -340,7 +348,7 @@ export class QueryCache {
  * which also makes it directly testable against a hand-built store set,
  * without a cache in the way.
  */
-function intersect(stores: readonly ComponentStore<never>[]): EntityId[] {
+function intersect(stores: readonly ComponentStore<unknown>[]): EntityId[] {
   let driver = stores[0];
   if (driver === undefined) return [];
   for (const store of stores) {

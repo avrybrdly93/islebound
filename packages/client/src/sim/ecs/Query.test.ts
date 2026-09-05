@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import { type ComponentDef, defineComponent } from '@sim/ecs/ComponentDef';
 import { ComponentRegistry } from '@sim/ecs/ComponentRegistry';
 import { EntityAllocator, type EntityId, indexOf } from '@sim/ecs/EntityAllocator';
-import { QueryCache, type AnyComponentDef } from '@sim/ecs/Query';
+import { QueryCache } from '@sim/ecs/Query';
 
 /**
  * BL-059's three acceptance criteria, plus the traps BL-058's handoff named
@@ -39,11 +39,6 @@ const Velocity = defineComponent<Vec>('Velocity');
 const PlayerTag = defineComponent<true>('PlayerTag');
 const Renderable = defineComponent<{ mesh: string }>('Renderable');
 
-/** Erases a def's value type the way `QueryCache.query` takes them. */
-function anyDef<T>(def: ComponentDef<T>): AnyComponentDef {
-  return def as AnyComponentDef;
-}
-
 function fixture(): {
   allocator: EntityAllocator;
   registry: ComponentRegistry;
@@ -70,9 +65,9 @@ describe('QueryCache: the intersection itself', () => {
     transforms.set(transformOnly, { x: 2, y: 2 });
     velocities.set(velocityOnly, { x: 3, y: 3 });
 
-    assert.deepEqual(queries.query(anyDef(Transform), anyDef(Velocity)), [both]);
-    assert.equal(queries.query(anyDef(Transform)).includes(neither), false);
-    assert.deepEqual(queries.query(anyDef(Transform)), [both, transformOnly]);
+    assert.deepEqual(queries.query(Transform, Velocity), [both]);
+    assert.equal(queries.query(Transform).includes(neither), false);
+    assert.deepEqual(queries.query(Transform), [both, transformOnly]);
   });
 
   it('is empty when a named component has no store yet, without creating a hole', () => {
@@ -83,9 +78,9 @@ describe('QueryCache: the intersection itself', () => {
     const e = allocator.create();
     registry.store(Transform).set(e, { x: 0, y: 0 });
 
-    assert.deepEqual(queries.query(anyDef(Transform), anyDef(PlayerTag)), []);
+    assert.deepEqual(queries.query(Transform, PlayerTag), []);
     registry.store(PlayerTag).set(e, true);
-    assert.deepEqual(queries.query(anyDef(Transform), anyDef(PlayerTag)), [e]);
+    assert.deepEqual(queries.query(Transform, PlayerTag), [e]);
   });
 
   it('treats the def order as irrelevant and a repeat as one constraint', () => {
@@ -94,16 +89,16 @@ describe('QueryCache: the intersection itself', () => {
     registry.store(Transform).set(e, { x: 0, y: 0 });
     registry.store(Velocity).set(e, { x: 0, y: 0 });
 
-    const forwards = queries.query(anyDef(Transform), anyDef(Velocity));
-    const backwards = queries.query(anyDef(Velocity), anyDef(Transform));
+    const forwards = queries.query(Transform, Velocity);
+    const backwards = queries.query(Velocity, Transform);
     assert.deepEqual(backwards, forwards);
     // One signature, not two: the second call was a cache hit.
     assert.equal(queries.size, 1);
 
-    assert.deepEqual(queries.query(anyDef(Transform), anyDef(Transform)), [e]);
+    assert.deepEqual(queries.query(Transform, Transform), [e]);
     assert.deepEqual(
-      queries.query(anyDef(Transform), anyDef(Transform)),
-      queries.query(anyDef(Transform)),
+      queries.query(Transform, Transform),
+      queries.query(Transform),
     );
   });
 
@@ -119,14 +114,14 @@ describe('QueryCache: the intersection itself', () => {
     const { registry, queries } = fixture();
     const duplicate = defineComponent<Vec>('Transform');
     registry.store(Transform);
-    assert.throws(() => queries.query(anyDef(duplicate)), /both named "Transform"/);
+    assert.throws(() => queries.query(duplicate), /both named "Transform"/);
   });
 
   it('hands back a frozen array, so a caller cannot corrupt the cache', () => {
     const { allocator, registry, queries } = fixture();
     const e = allocator.create();
     registry.store(Transform).set(e, { x: 0, y: 0 });
-    const result = queries.query(anyDef(Transform));
+    const result = queries.query(Transform);
     assert.equal(Object.isFrozen(result), true);
   });
 });
@@ -138,7 +133,7 @@ describe('BL-059 criterion 2: results are in ascending entity order, always', ()
     const entities = [allocator.create(), allocator.create(), allocator.create()];
     for (const e of [...entities].reverse()) store.set(e, { x: 0, y: 0 });
 
-    assert.deepEqual(queries.query(anyDef(Transform)), entities);
+    assert.deepEqual(queries.query(Transform), entities);
   });
 
   it('is ascending by INDEX after a recycle, where handle order disagrees', () => {
@@ -160,7 +155,7 @@ describe('BL-059 criterion 2: results are in ascending entity order, always', ()
     assert.ok(recycled > second, 'the recycled handle must be the larger number');
     assert.ok(indexOf(recycled) < indexOf(second), 'and the smaller index');
 
-    assert.deepEqual(queries.query(anyDef(Transform)), [recycled, second]);
+    assert.deepEqual(queries.query(Transform), [recycled, second]);
   });
 
   it('is ascending when the driving store is not the first def', () => {
@@ -185,7 +180,7 @@ describe('BL-059 criterion 2: results are in ascending entity order, always', ()
     players.set(b, true);
     players.set(a, true);
 
-    assert.deepEqual(queries.query(anyDef(Transform), anyDef(PlayerTag)), [a, b]);
+    assert.deepEqual(queries.query(Transform, PlayerTag), [a, b]);
   });
 });
 
@@ -196,13 +191,13 @@ describe('BL-059 criterion 3: a mid-tick add or remove is reflected, not served 
     const first = allocator.create();
     store.set(first, { x: 0, y: 0 });
 
-    assert.deepEqual(queries.query(anyDef(Transform)), [first]);
+    assert.deepEqual(queries.query(Transform), [first]);
 
     const second = allocator.create();
     store.set(second, { x: 1, y: 1 });
 
     // No tick boundary, no explicit invalidation call — immediately.
-    assert.deepEqual(queries.query(anyDef(Transform)), [first, second]);
+    assert.deepEqual(queries.query(Transform), [first, second]);
   });
 
   it('reflects a component removed after the first query', () => {
@@ -213,9 +208,9 @@ describe('BL-059 criterion 3: a mid-tick add or remove is reflected, not served 
     store.set(a, { x: 0, y: 0 });
     store.set(b, { x: 1, y: 1 });
 
-    assert.deepEqual(queries.query(anyDef(Transform)), [a, b]);
+    assert.deepEqual(queries.query(Transform), [a, b]);
     store.remove(a);
-    assert.deepEqual(queries.query(anyDef(Transform)), [b]);
+    assert.deepEqual(queries.query(Transform), [b]);
   });
 
   it('reflects a destroyed entity, which no store mutation can signal', () => {
@@ -231,14 +226,14 @@ describe('BL-059 criterion 3: a mid-tick add or remove is reflected, not served 
     store.set(a, { x: 0, y: 0 });
     store.set(b, { x: 1, y: 1 });
 
-    const before = queries.query(anyDef(Transform));
+    const before = queries.query(Transform);
     assert.deepEqual(before, [a, b]);
 
     const storeVersionBefore = store.version;
     allocator.destroy(a);
     assert.equal(store.version, storeVersionBefore, 'destroy must not touch the store');
 
-    assert.deepEqual(queries.query(anyDef(Transform)), [b]);
+    assert.deepEqual(queries.query(Transform), [b]);
   });
 
   it('does not invalidate when a set only replaces a value', () => {
@@ -251,13 +246,13 @@ describe('BL-059 criterion 3: a mid-tick add or remove is reflected, not served 
     const e = allocator.create();
     store.set(e, { x: 0, y: 0 });
 
-    queries.query(anyDef(Transform));
+    queries.query(Transform);
     const hitsBefore = queries.hits;
     const missesBefore = queries.misses;
 
     store.set(e, { x: 99, y: 99 });
 
-    assert.deepEqual(queries.query(anyDef(Transform)), [e]);
+    assert.deepEqual(queries.query(Transform), [e]);
     assert.equal(queries.misses, missesBefore, 'a value-only set must not force a recompute');
     assert.equal(queries.hits, hitsBefore + 1);
   });
@@ -272,12 +267,12 @@ describe('BL-059 criterion 3: a mid-tick add or remove is reflected, not served 
     const e = allocator.create();
     store.set(e, { x: 0, y: 0 });
 
-    queries.query(anyDef(Transform));
+    queries.query(Transform);
     const missesBefore = queries.misses;
 
     allocator.create();
 
-    assert.deepEqual(queries.query(anyDef(Transform)), [e]);
+    assert.deepEqual(queries.query(Transform), [e]);
     assert.equal(queries.misses, missesBefore);
   });
 
@@ -289,13 +284,13 @@ describe('BL-059 criterion 3: a mid-tick add or remove is reflected, not served 
     const store = registry.store(Transform);
     const original = allocator.create();
     store.set(original, { x: 7, y: 7 });
-    assert.deepEqual(queries.query(anyDef(Transform)), [original]);
+    assert.deepEqual(queries.query(Transform), [original]);
 
     allocator.destroy(original);
     const recycled = allocator.create();
     assert.equal(indexOf(recycled), indexOf(original));
 
-    assert.deepEqual(queries.query(anyDef(Transform)), []);
+    assert.deepEqual(queries.query(Transform), []);
     assert.equal(store.get(recycled), undefined);
   });
 
@@ -310,17 +305,17 @@ describe('BL-059 criterion 3: a mid-tick add or remove is reflected, not served 
     transforms.set(e, { x: 0, y: 0 });
     renderables.set(e, { mesh: 'a' });
 
-    queries.query(anyDef(Transform));
-    queries.query(anyDef(Renderable));
+    queries.query(Transform);
+    queries.query(Renderable);
     const missesBefore = queries.misses;
 
     const other = allocator.create();
     transforms.set(other, { x: 1, y: 1 });
 
-    queries.query(anyDef(Renderable));
+    queries.query(Renderable);
     assert.equal(queries.misses, missesBefore, 'the Renderable signature was untouched');
 
-    queries.query(anyDef(Transform));
+    queries.query(Transform);
     assert.equal(queries.misses, missesBefore + 1, 'the Transform signature was not');
   });
 
@@ -333,31 +328,31 @@ describe('BL-059 criterion 3: a mid-tick add or remove is reflected, not served 
     store.set(b, { x: 1, y: 1 });
     allocator.destroy(a);
 
-    assert.deepEqual(queries.query(anyDef(Transform)), [b]);
+    assert.deepEqual(queries.query(Transform), [b]);
     assert.equal(store.prune(), 1);
-    assert.deepEqual(queries.query(anyDef(Transform)), [b]);
+    assert.deepEqual(queries.query(Transform), [b]);
   });
 });
 
 describe('BL-059 criterion 1: 10,000 entities x 6 components, iteration <= 0.15 ms', () => {
   const ENTITIES = 10_000;
-  const DEFS: AnyComponentDef[] = [
-    anyDef(Transform),
-    anyDef(Velocity),
-    anyDef(PlayerTag),
-    anyDef(Renderable),
-    anyDef(defineComponent<number>('Collider')),
-    anyDef(defineComponent<number>('Interactable')),
+  const DEFS: ComponentDef<unknown>[] = [
+    Transform,
+    Velocity,
+    PlayerTag,
+    Renderable,
+    defineComponent<number>('Collider'),
+    defineComponent<number>('Interactable'),
   ];
 
-  function populated(): { queries: QueryCache; defs: AnyComponentDef[] } {
+  function populated(): { queries: QueryCache; defs: ComponentDef<unknown>[] } {
     const allocator = new EntityAllocator();
     const registry = new ComponentRegistry(allocator);
     const queries = new QueryCache(allocator, registry);
     const stores = DEFS.map((def) => registry.store(def));
     for (let i = 0; i < ENTITIES; i += 1) {
       const e = allocator.create();
-      for (const store of stores) store.set(e, 1 as never);
+      for (const store of stores) store.set(e, 1);
     }
     return { queries, defs: DEFS };
   }
@@ -477,9 +472,9 @@ describe('BL-059 criterion 1: 10,000 entities x 6 components, iteration <= 0.15 
     let only: EntityId | undefined;
     for (let i = 0; i < ENTITIES; i += 1) {
       const e = allocator.create();
-      for (const store of wide) store.set(e, 1 as never);
+      for (const store of wide) store.set(e, 1);
       if (i === ENTITIES - 1) {
-        narrow.set(e, 1 as never);
+        narrow.set(e, 1);
         only = e;
       }
     }

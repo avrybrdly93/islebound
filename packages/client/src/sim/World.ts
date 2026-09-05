@@ -102,7 +102,7 @@ import type { ComponentDef } from '@sim/ecs/ComponentDef';
 import { ComponentRegistry } from '@sim/ecs/ComponentRegistry';
 import type { ComponentStore } from '@sim/ecs/ComponentStore';
 import { EntityAllocator, type EntityId } from '@sim/ecs/EntityAllocator';
-import { QueryCache, type AnyComponentDef } from '@sim/ecs/Query';
+import { QueryCache } from '@sim/ecs/Query';
 import type { RegisteredSystem } from '@sim/systems/order';
 
 /**
@@ -263,20 +263,13 @@ export class World<M extends EventMap = Record<never, never>> {
    *   this world, which means the rule above has been broken.
    */
   query(...defs: readonly ComponentDef<unknown>[]): readonly EntityId[] {
-    // `QueryCache.query` takes `ComponentDef<never>` -- the *bottom* of the
-    // family, which nothing but itself is assignable to, so every caller of the
-    // cache directly has to cast (its own test file carries an `anyDef<T>`
-    // helper for exactly this). A query does not read a def's value type at
-    // all, so the top of the family is the correct parameter and this signature
-    // uses it: every `ComponentDef<T>` is a `ComponentDef<unknown>`, so a system
-    // writes `world.query(Transform, PlayerTag)` with no cast anywhere.
-    //
-    // The one cast is here, once, and it is erasure rather than a widening --
-    // `defs` is only ever read for identity and handed to the registry. Filed
-    // as discovered work: `QueryCache.query` could take the same parameter type
-    // and delete this line, but that is a change to another module's public
-    // signature and `35` §3 keeps it out of this task.
-    return this.queries.query(...(defs as readonly AnyComponentDef[]));
+    // Plain delegation, and it is worth noting that it did not used to be:
+    // until BL-065 `QueryCache.query` took `ComponentDef<never>`, so this line
+    // carried an erasing cast and a paragraph explaining it. The two
+    // signatures are now the same type. `ComponentDef<unknown>` is the top of
+    // the family, so a system writes `world.query(Transform, PlayerTag)` with
+    // no cast anywhere.
+    return this.queries.query(...defs);
   }
 
   /**

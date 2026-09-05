@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import { type ComponentDef, defineComponent } from '@sim/ecs/ComponentDef';
 import { ComponentRegistry } from '@sim/ecs/ComponentRegistry';
 import { EntityAllocator } from '@sim/ecs/EntityAllocator';
-import { QueryCache, SIGNATURE_LIMIT, type AnyComponentDef } from '@sim/ecs/Query';
+import { QueryCache, SIGNATURE_LIMIT } from '@sim/ecs/Query';
 
 /**
  * BL-063: the signature limit, which is the *check* half of that item's first
@@ -31,10 +31,6 @@ const DEFS: readonly ComponentDef<number>[] = Array.from(
   (_unused, i) => defineComponent<number>(`Limit${String(i)}`),
 );
 
-function anyDef<T>(def: ComponentDef<T>): AnyComponentDef {
-  return def as unknown as AnyComponentDef;
-}
-
 function freshCache(): QueryCache {
   const allocator = new EntityAllocator();
   return new QueryCache(allocator, new ComponentRegistry(allocator));
@@ -45,7 +41,7 @@ function querySignatures(cache: QueryCache, count: number): void {
   for (let i = 0; i < count; i += 1) {
     const def = DEFS[i];
     assert.ok(def !== undefined, `fixture is too small for ${String(count)} signatures`);
-    cache.query(anyDef(def));
+    cache.query(def);
   }
 }
 
@@ -66,7 +62,7 @@ describe('QueryCache signature limit (BL-063)', () => {
     const overflow = DEFS[SIGNATURE_LIMIT];
     assert.ok(overflow !== undefined);
     assert.throws(
-      () => cache.query(anyDef(overflow)),
+      () => cache.query(overflow),
       /refusing a 65th distinct query signature/,
       'a new signature past the limit must throw; the whole point of the limit is that it fires',
     );
@@ -83,7 +79,7 @@ describe('QueryCache signature limit (BL-063)', () => {
 
     let message = '';
     try {
-      cache.query(anyDef(overflow));
+      cache.query(overflow);
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
     }
@@ -105,13 +101,13 @@ describe('QueryCache signature limit (BL-063)', () => {
     const existing = DEFS[0];
     assert.ok(overflow !== undefined && existing !== undefined);
 
-    assert.throws(() => cache.query(anyDef(overflow)));
+    assert.throws(() => cache.query(overflow));
     assert.equal(cache.size, SIGNATURE_LIMIT, 'a refused query must not add an entry');
-    assert.throws(() => cache.query(anyDef(overflow)), /refusing/);
+    assert.throws(() => cache.query(overflow), /refusing/);
     assert.equal(cache.size, SIGNATURE_LIMIT);
 
     assert.deepEqual(
-      cache.query(anyDef(existing)),
+      cache.query(existing),
       [],
       'an already-cached signature must still answer after a refusal',
     );
@@ -128,9 +124,9 @@ describe('QueryCache signature limit (BL-063)', () => {
     assert.ok(a !== undefined && b !== undefined);
 
     for (let i = 0; i < SIGNATURE_LIMIT * 4; i += 1) {
-      cache.query(anyDef(a), anyDef(b));
-      cache.query(anyDef(b), anyDef(a));
-      cache.query(anyDef(a), anyDef(a), anyDef(b));
+      cache.query(a, b);
+      cache.query(b, a);
+      cache.query(a, a, b);
     }
 
     assert.equal(cache.size, 1, 'all three spellings are one signature');
