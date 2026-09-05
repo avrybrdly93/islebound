@@ -39,7 +39,15 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-_Nothing in progress._
+### BL-065 — `QueryCache.query` takes the bottom of the def family, so every direct caller casts
+- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** 04
+- **Description:** `QueryCache.query(...defs: readonly AnyComponentDef[])` where `AnyComponentDef = ComponentDef<never>` — the *bottom* of the family, which nothing but itself is assignable to under `exactOptionalPropertyTypes`. So a caller holding a `ComponentDef<Vec>` must cast; `Query.test.ts` carries an `anyDef<T>` helper for exactly this, and `World.query` carries one erasing cast for the same reason. A query never reads a def's value type, so `ComponentDef<unknown>` — the top — is the correct parameter and every caller loses its cast.
+- **Acceptance criteria:**
+  - [ ] `QueryCache.query` accepts any `ComponentDef<T>` with no cast at the call site
+  - [ ] `World.query`'s cast and `Query.test.ts`'s `anyDef<T>` helper are both deleted
+  - [ ] `AnyComponentDef` is either re-pointed or removed; if it stays, its doc says which position it is for
+- **Notes:** Filed 2026-08-23 by BL-061, which chose `ComponentDef<unknown>` for `World.query`'s own signature and left `QueryCache`'s alone — changing another module's public signature is the scope expansion `35` §3 forbids. Purely ergonomic; nothing is wrong today, and the one cast is erasure rather than a widening.
+- **Claimed:** 2026-09-05, see `33_CURRENT_TASK.md`
 
 ## Ready — Phase 0: Foundation
 
@@ -95,15 +103,6 @@ _Nothing in progress._
   - [x] The soft limit is decided — **not** enforced, and `CLAUDE.md` now says so rather than rendering 300 and 500 identically as numbers with no indication that neither was checked. A `warn` in a CI-only lint is noise; fourteen files sit over 300 and every one is deliberate
   - [x] Test-file scope stated explicitly — **tests are in scope**, and they are the whole reason the rule bites. No source file is over 500 (largest: `allocationHarness.ts` at 422), so a sources-only rule would have enforced the limit precisely where nobody was breaking it
 - **Notes:** Filed 2026-08-30 by BL-068. **Done 2026-09-01**, see `34_DEVELOPMENT_LOG.md` and decision **0029**. Three test files split at existing `describe` seams, each into a pair plus a small fixture module: `World.test.ts` 547 → 262 + 278 + 42, `EventBus.test.ts` 533 → 332 + 212 + 41, `Rng.test.ts` 509 → 204 + 235 + 113. **Suite count unchanged at 342 pass / 0 fail across 88 suites**, which is the check that matters for a move (BL-068's Surprise 3). **The rule was verified to fire rather than assumed to** — a 511-line probe reports the violation and was then removed; a rule that cannot fail is not a rule. The fixture modules reverse decision 0028's alternative (c) deliberately: 0028 preferred visible duplication for fixtures that were "three lines and stable", and `Rng`'s shared block is 113 lines of chi-square machinery whose critical values are stated rather than eyeballed. `Query.test.ts` is left at **499**, one under — the next case anybody adds now fails lint, which is the rule working, and the failure says what to do.
-
-### BL-065 — `QueryCache.query` takes the bottom of the def family, so every direct caller casts
-- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** 04
-- **Description:** `QueryCache.query(...defs: readonly AnyComponentDef[])` where `AnyComponentDef = ComponentDef<never>` — the *bottom* of the family, which nothing but itself is assignable to under `exactOptionalPropertyTypes`. So a caller holding a `ComponentDef<Vec>` must cast; `Query.test.ts` carries an `anyDef<T>` helper for exactly this, and `World.query` carries one erasing cast for the same reason. A query never reads a def's value type, so `ComponentDef<unknown>` — the top — is the correct parameter and every caller loses its cast.
-- **Acceptance criteria:**
-  - [ ] `QueryCache.query` accepts any `ComponentDef<T>` with no cast at the call site
-  - [ ] `World.query`'s cast and `Query.test.ts`'s `anyDef<T>` helper are both deleted
-  - [ ] `AnyComponentDef` is either re-pointed or removed; if it stays, its doc says which position it is for
-- **Notes:** Filed 2026-08-23 by BL-061, which chose `ComponentDef<unknown>` for `World.query`'s own signature and left `QueryCache`'s alone — changing another module's public signature is the scope expansion `35` §3 forbids. Purely ergonomic; nothing is wrong today, and the one cast is erasure rather than a widening.
 
 ### BL-072 — The other `tasks/*.md` name `pnpm` commands and are still uncovered
 - **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
