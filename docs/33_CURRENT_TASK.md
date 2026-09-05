@@ -4,74 +4,96 @@
 
 ---
 
-## Status: IN_PROGRESS — BL-065
+## Status: IDLE
 
-**`QueryCache.query` takes the bottom of the def family, so every direct caller
-casts.** Phase 0 · Size S · Docs to read: `04`. Claimed 2026-09-05 before any
-code.
+No task in progress. **BL-065 is complete** (2026-09-05) — `QueryCache.query`
+takes `ComponentDef<unknown>`, the top of the def family; the `AnyComponentDef`
+alias is gone; five casts went, not the two the criteria named. See
+`34_DEVELOPMENT_LOG.md` 2026-09-05; its **Surprises** 2 and 3 are the ones
+worth reading, and **Surprise 4** is a process note someone with merge rights
+needs to act on.
 
-### Selection, verified rather than inherited
+Suite **349 → 354 pass / 0 fail across 90 suites**. `lint`, `lint:rules`,
+`lint:docs`, `typecheck` all clean.
 
-`AI_DEVELOPMENT_WORKFLOW.md` §2 says the topmost unblocked task in the current
-phase's Ready list. Walked the list in `32` in order:
+## Read this before anything else: `main` does not have this work
 
-| item | verdict |
-|---|---|
-| BL-056 | **Phase 1**, not a candidate under phase discipline. Fifteenth session running |
-| BL-059, BL-066, BL-068, BL-069 | done |
-| BL-067 | skipped **on its own instruction** (*"should not be taken before `23` has a shape"*), re-checked with the grep the previous handoff names: `23_SAVE_SYSTEM.md` mentions `EntitySave` exactly once, at §2 line 38, and defines it nowhere — so its first criterion still presumes a component-level format that does not exist |
-| **BL-065** | **topmost actually ready** |
+This session was launched with an explicit branch assignment and pushed to
+**`claude/sharp-lovelace-qozzup`**, not to `main`, which is what `CLAUDE.md`
+otherwise calls for. The branch is a fast-forward of `main` — nothing on it
+conflicts. **Someone with merge rights should fast-forward `main` and delete
+the branch.** A session picking up from `main` alone will find `AnyComponentDef`
+still present and this handoff describing a tree it cannot see.
 
-### The decision, made before coding
+## Next action for an agent
 
-Criterion 3 offers two answers for `AnyComponentDef`: re-point it, or remove
-it. **Taking removal.**
+The topmost unblocked task in Phase 0's Ready list, per
+`AI_DEVELOPMENT_WORKFLOW.md` §2.
 
-The alias exists to name the erased-def parameter type. Once it is re-pointed
-it becomes an alias for `ComponentDef<unknown>` — which is the spelling
-`World.query` **already uses in its own signature**, written out in full. Two
-names for one type in two adjacent modules is the drift this repository keeps
-filing items about, and the alias would no longer be earning the hop it costs
-a reader. Removing it also makes the two signatures visibly identical, which
-is the actual content of this change: `World.query` stops being a widening
-wrapper and becomes a plain delegation.
+**Read the file, do not trust this line.** In list order:
 
-Not a new decision, so no `40` entry: decision **0027** already chose this
-widening one level up for `ErasedStore` and recorded why it is sound — every
-member a query uses is covariant in `T`, so a `ComponentDef<T>` satisfies the
-widened type structurally with no assertion. 0027 also says in as many words
-that it does not solve BL-065. This is that principle applied, not a second
-choice of direction.
+- **BL-056** is still **Phase 1** — not a candidate under phase discipline.
+  Fifteenth session running.
+- **BL-067** is still the one to skip, **on its own instruction** rather than
+  on your judgement. Re-checked this session with the one grep the previous
+  handoff names: `23_SAVE_SYSTEM.md` mentions `EntitySave` exactly once (§2,
+  line 38) and defines it nowhere, so there is still no *component-level*
+  format, which is what BL-067's first criterion presumes.
+- **BL-065** — done, this session, and moved to Done rather than marked in
+  place.
+- **BL-072** is now the topmost that is actually ready.
 
-### The third call site the criteria do not name
+Then **BL-073**, **BL-074** (filed this session), then **BL-008**.
 
-`Query.limit.test.ts` (added by BL-063) carries **its own copy** of the
-`anyDef<T>` helper, at lines 34–35. The criteria name only `World.query`'s cast
-and `Query.test.ts`'s helper, so deleting exactly what is listed would leave the
-helper alive next door and the task half done. Both copies go.
+## Why BL-072 is a reasonable next task, and the trap inside it
 
-### Plan
+BL-072 is: two more `tasks/*.md` name `pnpm` commands that `lint:docs` does not
+cover — `tasks/phase_3_crafting.md` names `pnpm tools:balance` and
+`tasks/phase_7_multiplayer.md` names `pnpm --filter server sim-smoke`.
 
-1. `AnyComponentDef` deleted from `Query.ts`; every internal use becomes
-   `ComponentDef<unknown>`, and the internal `ComponentStore<never>`
-   annotations become `ComponentStore<unknown>` to match what
-   `ComponentRegistry.store` now returns.
-2. `QueryCache.query` takes `readonly ComponentDef<unknown>[]`.
-3. `World.query`'s erasing cast and its explanatory comment deleted; the
-   comment is replaced by a much shorter one, since the thing it explained no
-   longer exists.
-4. Both `anyDef<T>` helpers deleted, and their call sites pass defs directly.
-5. A test that would have failed before the change: a `ComponentDef<T>` for a
-   non-`never` `T` reaching `QueryCache.query` with no cast. Type-level, since
-   nothing about the *runtime* behaviour changes.
-6. Verify, document, hand off.
+**The second one is invisible to the checker by construction, and that is the
+task.** BL-072's own filing says it: `PNPM_COMMAND`'s `(?!--)` skips a flag, so
+`pnpm --filter <pkg> <script>` is never read as a command at all. So this is not
+"add two files to a list" — it is a gap in the *pattern*, and a session that
+only extends the file list will close the item while leaving the second command
+as uncovered as it was. Fix the pattern first, confirm it now sees the
+`--filter` form, and only then decide what the two newly-visible commands
+should resolve to.
 
-### What this must not become
+Note also that `pnpm tools:balance` has **no script and no owning backlog
+item**, so making it visible to `lint:docs` will make `lint:docs` fail. That is
+the check working, and the fix is either a `BL-###` that will build it or a
+correction to the doc — decide which, do not silence it.
 
-Nothing about runtime behaviour changes — this is a parameter type and three
-deleted casts. **The suite count is the check that matters**: it should move by
-exactly the cases added in step 5 and by nothing else (BL-068's Surprise 3).
-`Query.test.ts` is at 499 of 500 lines, so step 5's cases go in
-`Query.limit.test.ts` or a new file, never into `Query.test.ts` — decision 0029
-is explicit that the limit biting is the rule working. Deleting `anyDef` frees
-lines in both, which is headroom, not an invitation.
+## What this session leaves for someone else
+
+- **BL-074**, filed today from a measurement: `queries.query('Transform')`
+  returns `[]` rather than throwing. `QueryCache` reads a def only for identity,
+  so a non-def becomes a `Map` key like any other and the intersection is
+  legitimately empty. TypeScript is the only guard. **The failure is silent and
+  plausible** — a system that queried the wrong thing sees "no entities
+  matched", which is indistinguishable from a world where nothing matched. The
+  cheap middle option nobody has costed is validating only on the **cold** path,
+  since `signatureIds` already distinguishes a new signature from a cached one.
+
+## Two findings worth carrying, both about how the work got checked
+
+1. **After a type widening, `typecheck` green is not the finish line — `lint`
+   is.** Three `store.set(e, 1 as never)` casts became unnecessary the moment
+   the parameter widened, and unnecessary assertions typecheck perfectly.
+   `no-unnecessary-type-assertion` found them; the item's description did not
+   know they existed.
+2. **When a task names its call sites, grep for the pattern anyway.**
+   `Query.limit.test.ts` carried a second copy of the `anyDef` helper, added by
+   BL-063 three days *after* BL-065 was filed, so it could not possibly have
+   been in the criteria. Deleting exactly what was listed would have left it
+   alive next door.
+
+## The standing question, unchanged and now one item worse
+
+**Six** `S` items now sit ahead of **BL-008**, the `M` the phase is actually
+for — BL-074 joined the queue today. Every one of them was filed by a previous
+session against code it had just written, which is the backlog working as
+intended, but a phase that only ever services its own discoveries does not reach
+its exit criteria. **This is the third session to raise it.** Worth a human
+deciding whether BL-008 should be pinned ahead of the `S` queue.

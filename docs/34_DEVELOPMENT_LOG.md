@@ -34,6 +34,126 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-05 — BL-065 `QueryCache.query` takes the top of the def family, not the bottom
+
+**Type:** refactor
+**Phase:** 0
+**PR:** — (pushed direct to the session branch `claude/sharp-lovelace-qozzup`; see Surprises 4)
+**Time:** ~1h
+
+### What changed
+`QueryCache.query` took `AnyComponentDef = ComponentDef<never>` — the *bottom* of
+the def family, which under `exactOptionalPropertyTypes` nothing but itself is
+assignable to — so every direct caller had to cast. It now takes
+`ComponentDef<unknown>`, the top, and the casts are gone: `World.query`'s
+erasing cast, `Query.test.ts`'s `anyDef<T>` helper, `Query.limit.test.ts`'s
+second copy of that helper, and three `store.set(e, 1 as never)` calls. The
+`AnyComponentDef` alias is removed rather than re-pointed. New
+`Query.defs.test.ts` pins the parameter position. **No runtime behaviour
+changed.**
+
+### Why it was done this way
+**Removal, not re-pointing** (criterion 3 allowed either). Re-pointed, the alias
+would have been a second name for the `ComponentDef<unknown>` that `World.query`
+already spells out in full, one module away — and two names for one type in two
+adjacent modules is the drift this backlog keeps filing items about. Removing it
+makes the two signatures visibly identical, which is the actual content of the
+change: `World.query` stops being a widening wrapper and becomes a plain
+delegation.
+
+**No `40` entry**, deliberately. Decision **0027** already chose exactly this
+widening one level up, for `ErasedStore`, and recorded why it is sound: every
+member a query uses is covariant in `T`, so a `ComponentDef<T>` satisfies the
+widened type structurally with no assertion. 0027 also says in as many words
+that it does not solve BL-065. This is a decided principle being applied, not a
+second choice of direction, and logging it as a decision would make the record
+look like two independent judgements where there was one.
+
+**The internal `ComponentStore<never>` annotations moved to `<unknown>` too**,
+because `ComponentRegistry.store` is generic in the def and now returns
+`ComponentStore<unknown>`. Nothing the cache does with a store — `size`,
+`entities()`, `has()`, `version` — mentions `T` at all, so this is annotation
+bookkeeping rather than a second widening.
+
+### Surprises
+
+1. **The criteria named two casts; there were five.** `Query.limit.test.ts`,
+   added by BL-063 three days earlier, carried **its own copy** of the
+   `anyDef<T>` helper — so deleting exactly what the criteria listed would have
+   left the helper alive next door and the item half done. The previous
+   handoff caught this and said so, which is the only reason it was not
+   missed; the *item* never learned about it. **When a task names call sites,
+   grep for the pattern rather than trusting the list** — a helper added after
+   the item was filed cannot be in it.
+2. **The lint rule found casts the task did not know about.** Once the
+   parameter widened, `@typescript-eslint/no-unnecessary-type-assertion`
+   reported three `store.set(e, 1 as never)` calls in `Query.test.ts`. Those
+   existed only because `registry.store(def)` came back at the bottom too, so
+   the widening reached further than the item's description does. The
+   corollary is worth keeping: **after a type widening, a green `typecheck` is
+   not the finish line — `lint` is**, because unnecessary assertions typecheck
+   perfectly.
+3. **A non-def does not fail at runtime.** `queries.query('Transform')` returns
+   `[]`. `QueryCache` reads a def only for identity — a `Map` key, then a
+   registry lookup — so a string becomes a key like any other, gets a fresh
+   empty store, and the intersection is legitimately empty. This was found by
+   writing `assert.throws` around the `@ts-expect-error` cases and watching the
+   assertion fail. It matters because the failure is **silent and plausible**:
+   a system that queried the wrong thing sees "no entities matched" and does
+   nothing, which looks exactly like a world in which nothing matched. Filed as
+   **BL-074**; not fixed here, because runtime validation on a per-system,
+   per-tick path is a cost question and `35` §3 keeps it out of this task.
+4. **This session could not push to `main`.** `CLAUDE.md` and this log's own
+   convention say completed work goes direct to `main`. The run was launched
+   with an explicit branch assignment — develop and push to
+   `claude/sharp-lovelace-qozzup`, and never push elsewhere without permission
+   — which is a harness-level instruction the run is not free to override. The
+   conservative reading was taken, since pushing to `main` is the irreversible
+   half. **Someone with the authority should fast-forward `main` to that
+   branch.** Recorded here rather than silently, because a "PR: —" line that
+   usually means "landed on `main`" would otherwise be untrue.
+
+### Tests
+New `Query.defs.test.ts`, 5 cases: a def with a non-`never` value type accepted
+with no cast; four defs with mutually unrelated value types in one call (the
+case that could not compile at all before); a `ComponentDef<never>` still
+accepted, so this is a widening rather than a move; `World.query` and
+`QueryCache.query` satisfied by the identical argument list; and two
+`@ts-expect-error` suppressions pinning that the widening stopped at the top of
+the family.
+
+**A separate file** because `Query.test.ts` is at 494 of a 500-line hard limit
+even after this task deleted its helper — decision 0029's rule working, for the
+second time in three sessions.
+
+**Verified able to fail, in both directions**, which matters more here than
+usual because the failure mode of a widening is *over*-widening and every
+positive case above would compile just as happily against `...defs: unknown[]`.
+Reverting the parameter to `ComponentDef<never>` produces **50** compile errors;
+widening it to `unknown[]` makes the two `@ts-expect-error` directives unused
+(**TS2578**). The negative case is the only assertion in the file that can tell
+the two apart.
+
+**The two suppressions are deliberately never invoked** — they sit in a function
+the test only checks the existence of. A `@ts-expect-error` suppresses the
+compile error and lets the call *run*, which is the trap
+`ComponentRegistry.test.ts` records from its own first draft; here running them
+is worse than useless, because of Surprise 3.
+
+Suite **349 → 354 pass / 0 fail**, **89 → 90 suites** — moved by exactly the new
+file and by nothing else, which is BL-068's Surprise 3 applied to a change that
+should alter no behaviour at all. `lint`, `lint:rules`, `lint:docs`, `typecheck`
+all clean. `pnpm sim --ticks 20000 --assert-hash` and `pnpm check:bundle` still
+do not exist (BL-014, BL-018), as `CLAUDE.md` predicts for a Phase-0 session.
+
+### Follow-ups
+- **BL-074** — `QueryCache.query` accepts a non-def at runtime and returns an
+  empty result. Filed from Surprise 3, with the cheap middle option nobody has
+  costed: validate only on the *cold* path, since `signatureIds` already
+  distinguishes a new signature from a cached one.
+
+---
+
 ## 2026-09-04 — BL-063 `QueryCache` is bounded by a checked rule, not by eviction
 
 **Type:** feature

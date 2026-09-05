@@ -39,15 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-### BL-065 — `QueryCache.query` takes the bottom of the def family, so every direct caller casts
-- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** 04
-- **Description:** `QueryCache.query(...defs: readonly AnyComponentDef[])` where `AnyComponentDef = ComponentDef<never>` — the *bottom* of the family, which nothing but itself is assignable to under `exactOptionalPropertyTypes`. So a caller holding a `ComponentDef<Vec>` must cast; `Query.test.ts` carries an `anyDef<T>` helper for exactly this, and `World.query` carries one erasing cast for the same reason. A query never reads a def's value type, so `ComponentDef<unknown>` — the top — is the correct parameter and every caller loses its cast.
-- **Acceptance criteria:**
-  - [ ] `QueryCache.query` accepts any `ComponentDef<T>` with no cast at the call site
-  - [ ] `World.query`'s cast and `Query.test.ts`'s `anyDef<T>` helper are both deleted
-  - [ ] `AnyComponentDef` is either re-pointed or removed; if it stays, its doc says which position it is for
-- **Notes:** Filed 2026-08-23 by BL-061, which chose `ComponentDef<unknown>` for `World.query`'s own signature and left `QueryCache`'s alone — changing another module's public signature is the scope expansion `35` §3 forbids. Purely ergonomic; nothing is wrong today, and the one cast is erasure rather than a widening.
-- **Claimed:** 2026-09-05, see `33_CURRENT_TASK.md`
+_Nothing in progress._
 
 ## Ready — Phase 0: Foundation
 
@@ -325,6 +317,15 @@ Current phase: **Phase 0 — Foundation**
   - [ ] `core/math/allocation.test.ts` gets the same treatment as `core/EventBus.test.ts`
 - **Notes:** Filed 2026-08-16 by BL-006, from a real failure: `EventBus.test.ts`'s first run failed its zero-subscriber-emit assertion once, then passed 13 consecutive runs, which is what prompted measuring the control. **Not hypothetical for the existing suite either** — `allocation.test.ts` derives its allowance the same way and BL-050 recorded a reference-machine control of ~115000 (allowance 1150, only just above one sample). BL-006 mitigated its own three cases with `repeats: 6`, since `attributedBytes` is the minimum across passes and a stray must then recur in all six; that is a local patch, not the fix. The guard `controlBytes >= 10_000` does not catch this, because the instrument is working correctly — it is the *allowance arithmetic* that is unaware of the sample granularity.
 
+### BL-074 — `QueryCache.query` accepts a non-def at runtime and returns an empty result
+- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** 04
+- **Description:** Measured 2026-09-05 while landing BL-065: `queries.query('Transform')` does not throw, it returns `[]`. `QueryCache` reads a def only for identity — a `Map` key in `signatureIds`, and a lookup in `ComponentRegistry.store` — so a string becomes a key like any other, gets a fresh empty store, and the intersection is legitimately empty. TypeScript is the only thing that rejects it, and it does so correctly; the question is whether that is enough. It matters more than a typo would because the failure is **silent and plausible**: a system that queried the wrong thing sees "no entities matched" and does nothing, which looks exactly like a world in which nothing matched.
+- **Acceptance criteria:**
+  - [ ] A decision, recorded: either `query` validates its defs and this item closes as "type-checked is enough", or it rejects a non-def loudly the way `defineComponent` already rejects an empty name
+  - [ ] If it validates, the cost is measured on the path that matters — `query` runs per system per tick, and BL-059's budget is 0.15 ms for the *cached* path against a measured 0.0784 ms, so there is less headroom here than there looks
+  - [ ] Either way, `Query.defs.test.ts`'s comment recording the current behaviour is updated or deleted, so it does not outlive the fact
+- **Notes:** Filed 2026-09-05 by BL-065, which found it and deliberately did not fix it — runtime validation on a per-tick path is a cost question, not a typing one, and `35` §3 keeps it out of that task. Note the cheap middle option nobody has costed: validating only on the **cold** path, since `signatureIds` already distinguishes a new signature from a cached one and a wrong def is a wrong def the first time it is seen.
+
 ## Ready — Phase 1: Player & World (seeded; groom before starting)
 
 ### BL-022 — Control map authoring and loader
@@ -433,6 +434,17 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-065 — `QueryCache.query` takes the bottom of the def family, so every direct caller casts
+- **Completed:** 2026-09-05 · **PR:** — (pushed direct to the session branch; see `34_DEVELOPMENT_LOG.md`)
+- `sim/ecs/Query.ts`, `sim/World.ts`, `sim/ecs/Query.test.ts`, `sim/ecs/Query.limit.test.ts`, new `sim/ecs/Query.defs.test.ts`. Suite **349 → 354 pass / 0 fail**, **89 → 90 suites**. `lint`, `lint:rules`, `lint:docs`, `typecheck` all clean.
+- **All three criteria met.** `QueryCache.query` takes `readonly ComponentDef<unknown>[]` and no caller casts; `World.query`'s cast and `Query.test.ts`'s `anyDef<T>` are both deleted; `AnyComponentDef` is **removed** rather than re-pointed.
+- **Removal was the choice, and the reason is drift.** Re-pointed, the alias would have been a second name for the `ComponentDef<unknown>` that `World.query` already spells out in full, one module away. Removing it makes the two signatures visibly identical, which is the actual content of the change: `World.query` stops being a widening wrapper and becomes a plain delegation. No `40` entry — decision **0027** already chose this widening one level up for `ErasedStore` and recorded why it is sound, and said in as many words that it did not solve this item. This is that principle applied, not a second choice of direction.
+- **Five casts went, not the two the criteria name.** `Query.limit.test.ts` (added by BL-063) carried **its own copy** of `anyDef<T>`, so deleting exactly what was listed would have left the helper alive next door. And once the parameter widened, `no-unnecessary-type-assertion` reported three more: `store.set(e, 1 as never)` in `Query.test.ts`, which existed only because `registry.store` came back at the bottom too. The lint rule found those, not the item.
+- **Verified able to fail, in both directions.** Reverting the parameter to `ComponentDef<never>` produces **50** compile errors; over-widening it to `unknown[]` makes the new file's two `@ts-expect-error` directives unused (**TS2578**). The second is the one that matters: over-widening is the failure mode of a widening, and every positive case in the file would compile just as happily against `unknown[]`.
+- **The suite count moved by exactly the new file** (349 → 354, 89 → 90 suites) and by nothing else, which is BL-068's Surprise 3 applied to a change that should alter no behaviour at all.
+- **`Query.test.ts` came down to 494 from 499**, so deleting `anyDef` bought six lines of headroom under the 500-line hard limit. The new cases went into a new file anyway (decision 0029).
+- **Discovered and filed as BL-074**: a non-def reaches `query` at runtime and returns `[]` rather than throwing.
 
 ### BL-063 — `QueryCache` has no eviction
 - **Completed:** 2026-09-04 · **PR:** — (pushed direct to `main`)
