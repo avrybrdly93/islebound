@@ -34,6 +34,103 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-06 — BL-065 `AnyComponentDef` is the top of the def family, not the bottom
+
+**Type:** refactor
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~1h
+
+### What changed
+`AnyComponentDef` is `ComponentDef<unknown>` instead of `ComponentDef<never>`,
+so `QueryCache.query` accepts any def with no cast at the call site.
+`World.query`'s erasing `as` is deleted, and so are **both** copies of the
+`anyDef<T>` helper — `Query.test.ts`'s, which BL-065's criteria name, and
+`Query.limit.test.ts`'s, which they do not. `QueryCache`'s private surface
+moved with the parameter (`CachedQuery.stores`, `storesFor`, `intersect` all
+said `ComponentStore<never>`). New `Query.defTypes.test.ts` holds the cases
+that say what changed, since nothing about runtime behaviour did. Decision
+**0031** carries the argument.
+
+### Why it was done this way
+This is decision **0027**'s widening applied one level down, and applying a
+decided principle is all it is. 0027 chose exactly this direction for
+`ErasedStore` and recorded the reason: every member a caller uses is covariant
+in `T`, so a `ComponentDef<T>` satisfies the widened type structurally with no
+assertion. A query reads a def for map identity and hands it to
+`ComponentRegistry.store`; it never touches `T`. Both 0027 and 0030 say in as
+many words that they do not solve this item, which is why it stayed its own
+task for two weeks rather than being ridden along.
+
+The alternative worth naming is a generic
+`query<T extends readonly ComponentDef<unknown>[]>(...defs: T)`. It is
+machinery for nothing — the type parameter would be inferred and never used,
+because the return type is `readonly EntityId[]` whatever went in.
+
+Criterion 3 permitted deleting `AnyComponentDef` outright and writing
+`ComponentDef<unknown>` inline. It was kept, because with a doc saying *which
+position* it is for, the name is where the reasoning lives — and "which end"
+is the whole content of this task.
+
+### Surprises
+1. **The criteria named two deletion sites and there were three.** The previous
+   handoff caught this in advance and it was worth catching: `Query.limit.test.ts`
+   was created by BL-063 four days *after* BL-065 was filed, and carries its own
+   `anyDef<T>` — with `as unknown as`, a double assertion the original did not
+   need. Acceptance criteria written against a tree age with it. **Grep for the
+   thing, do not trust the list.**
+2. **Deleting casts exposed casts.** Three `store.set(e, 1 as never)` writes in
+   `Query.test.ts` became *unnecessary* assertions the moment the stores stopped
+   being `ComponentStore<never>`, and `no-unnecessary-type-assertion` caught
+   them. Nobody would have found those by reading; they read as deliberate.
+3. **The real consequence is on the store side, and it points the other way.**
+   `registry.store(anAnyComponentDef)` now yields `ComponentStore<unknown>`,
+   whose `set` accepts anything, where it used to yield `ComponentStore<never>`,
+   whose `set` accepted nothing. Not a new capability — `store<unknown>(def)`
+   was always spellable — but a shorter accidental path, and the reason the
+   type's doc now says it is a **parameter type, not a storage type**. 0027's
+   rule is unchanged and is what governs: reads are covariant and may be
+   widened; a write is contravariant and may not.
+4. **A pre-existing suite flake, found because a full-suite run went red once.**
+   `allocation.test.ts` failed with `stepSpring3 attributed 1040 bytes over
+   200000 calls (allowance 718.08)`. It reproduces on the **untouched tree** —
+   1 failure in 20 baseline full-suite runs, on `clamp` rather than
+   `stepSpring3` — and the file passes 8 of 8 in isolation. A different
+   operation each time is the tell: the sampling profiler occasionally
+   attributes one sample to an allocation-free operation, and one sample
+   carries the whole interval's weight. Filed as **BL-074** rather than fixed
+   (`35` §3). **The baseline was measured rather than assumed**, because "my
+   change is type-only so it cannot be mine" is an argument and 20 runs on the
+   stashed tree is evidence.
+
+### Tests
+New `Query.defTypes.test.ts`: three cases that pass differently-typed defs
+straight to `query` and to `World.query` with no assertion — the acceptance
+criterion made executable — and one carrying two `@ts-expect-error` pins that
+the widening went **one direction only** (the top is assignable neither into a
+specific member nor into the old bottom).
+
+A separate file rather than cases in `Query.test.ts`, which is at 494 of 500
+against `max-lines` at `error`. That is the seam decision 0029 predicted and
+BL-063 already used once.
+
+**The pins were verified to fire, sources restored from byte-checked backups
+after each.** Re-pointing `AnyComponentDef` back to `ComponentDef<never>` fails
+the build with **52 errors** across three files; deleting either
+`@ts-expect-error` reports the assignment it suppresses. This matters more than
+usual here: the change is type-only, so a green suite is evidence of nothing,
+and without these the whole task would be pinned by absence.
+
+Suite **349 → 353 pass / 0 fail** across **89 → 90 suites**. `lint`,
+`lint:rules`, `lint:docs`, `typecheck` all clean.
+
+### Follow-ups
+- **BL-074** — `allocation.test.ts` fails about one run in twenty, on whichever
+  operation catches a stray sample. Pre-existing; measured on the untouched
+  tree.
+
+---
+
 ## 2026-09-04 — BL-063 `QueryCache` is bounded by a checked rule, not by eviction
 
 **Type:** feature

@@ -4,52 +4,82 @@
 
 ---
 
-## Status: IN_PROGRESS — BL-065
+## Status: IDLE
 
-**`QueryCache.query` takes the bottom of the def family, so every direct caller
-casts.** Phase 0 · Size S · Docs to read: 04. Claimed 2026-09-06.
+No task in progress. **BL-065 is complete** (2026-09-06) — `AnyComponentDef` is
+`ComponentDef<unknown>`, the *top* of the def family, so `QueryCache.query`
+takes any def with no cast; `World.query`'s erasing `as` and **both** copies of
+the `anyDef<T>` helper are deleted; decision **0031** carries the argument. See
+`34_DEVELOPMENT_LOG.md` 2026-09-06 — its **Surprises** 1 and 4 are the ones
+worth reading.
 
-Selected as the topmost unblocked Phase-0 Ready item, per
-`AI_DEVELOPMENT_WORKFLOW.md` §2. The two items above it in list order are both
-skipped on their own recorded instruction rather than on judgement: **BL-056**
-is a Phase-1 item and phase discipline excludes it (fifteenth session running),
-and **BL-067** presumes a component-level save format that `23_SAVE_SYSTEM.md`
-still does not define — re-checked with the grep the previous handoff names,
-`EntitySave` appears once (§2, line 38) and is defined nowhere.
+Suite **349 → 353 pass / 0 fail across 90 suites**. `lint`, `lint:rules`,
+`lint:docs`, `typecheck` all clean.
 
-## Acceptance criteria (from `32_BACKLOG.md`)
+## Next action for an agent
 
-- [ ] `QueryCache.query` accepts any `ComponentDef<T>` with no cast at the call site
-- [ ] `World.query`'s cast and `Query.test.ts`'s `anyDef<T>` helper are both deleted
-- [ ] `AnyComponentDef` is either re-pointed or removed; if it stays, its doc says
-      which position it is for
+The topmost unblocked task in Phase 0's Ready list, per
+`AI_DEVELOPMENT_WORKFLOW.md` §2.
 
-## Plan
+**Read the file, do not trust this line.** In list order:
 
-1. Re-point `AnyComponentDef` from `ComponentDef<never>` to `ComponentDef<unknown>`
-   and state in its doc which position it is for — the widening decision 0027
-   already settled one level up, applied here.
-2. Follow the type through `QueryCache`'s private surface: `defIds`,
-   `signatureIds`, `storesFor` and `CachedQuery.stores` all mention `never`
-   today and must move with it.
-3. Delete `World.query`'s erasing cast.
-4. Delete `anyDef<T>` from **`Query.test.ts` and `Query.limit.test.ts`** — the
-   criteria name only the first, and the second carries its own copy, so
-   deleting only the named one leaves the helper alive next door.
-5. Add coverage that the widening is real rather than incidental: a def of a
-   concrete type reaching `query` with no assertion, and a `@ts-expect-error`
-   pinning that the *wrong* direction (`unknown` into a typed slot) still fails.
-6. Verify: `pnpm lint && pnpm lint:rules && pnpm lint:docs && pnpm typecheck && pnpm test`.
-   Suite count is the check that matters — a changed count on a type-only change
-   means a case was lost.
+- **BL-056** is still **Phase 1** — not a candidate under phase discipline.
+  Fifteenth session running.
+- **BL-067** is still the one to skip, **on its own instruction** rather than on
+  your judgement. Re-checked this session with the grep the previous handoff
+  names: `23_SAVE_SYSTEM.md` mentions `EntitySave` exactly once (§2, line 38)
+  and defines it nowhere, so there is still no *component-level* format, which
+  is what BL-067's first criterion presumes.
+- **BL-065** — done, this session, and moved to Done rather than marked in
+  place (BL-062's precedent; the Ready list still carries four older items
+  marked `**DONE**` in place, which is an inconsistency in the file, not a
+  second convention to copy).
+- **BL-072** is now the topmost that is actually ready.
 
-## What this task is not
+Then **BL-073**, **BL-074** (filed this session), then **BL-008**.
 
-Not a change to `ComponentDef` itself, to `ComponentRegistry.store`, or to
-`ErasedStore` — decision 0027 already settled the level above and says in as
-many words that it does not solve this one. Applying a decided principle, not
-making a new decision.
+## Why BL-072 is a reasonable next task, and where its real work is
 
-`Query.test.ts` is at **499 of 500 lines** and `max-lines` is an `error`
-(decision 0029). Deleting `anyDef` shortens it, so there is room; anything that
-*adds* to that file does not.
+BL-072 adds the remaining `tasks/*.md` to `COVERED_DOCS` in
+`tools/check-doc-commands.ts`. The list half is mechanical. **The interesting
+half is the second criterion**, and it is what stops this being a one-line
+repeat of BL-070: `PNPM_COMMAND`'s `(?!--)` means `pnpm --filter <pkg> <script>`
+is never read as a command at all, so `tasks/phase_7_multiplayer.md`'s
+`pnpm --filter server sim-smoke` is invisible to the check *by construction*.
+
+Two things to know before starting:
+
+1. **Deciding the `--filter` form is out of scope is a legitimate answer**, and
+   the criterion says so — but it must then be **written into the module
+   header** as a stated limit. A silent blind spot in a check is worse than a
+   declared one, because the check reports clean either way.
+2. **`tasks/phase_3_crafting.md` names `pnpm tools:balance`, which has no script
+   and no owning backlog item.** So adding that file to `COVERED_DOCS` turns
+   `pnpm lint:docs` red until something is done about it, and the check's own
+   contract says what the options are: the script exists, or the doc names the
+   item that will build it. Expect to file or find that item as part of this
+   task rather than after it.
+
+Nothing was left half-done this session. `Query.test.ts` is now at **494 of
+500** lines, six under the hard limit — anything that adds to that file still
+does not fit, and decision 0029 is explicit that this is the rule working
+rather than a problem to route around.
+
+## The standing question, unchanged
+
+**Five** `S` items now sit ahead of **BL-008**, the `M` the phase is actually
+for — BL-072, BL-073 and BL-074 among them, and BL-074 was filed this session
+against code this session did not write. That is the backlog working as
+intended, but a phase that only ever services its own discoveries does not
+reach its exit criteria. Worth a human deciding whether BL-008 should be pinned
+ahead of the `S` queue.
+
+## One thing to know before you trust a red suite
+
+**BL-074 makes about one full-suite run in twenty fail on
+`allocation.test.ts`, and it will not be the same operation twice.** It is
+pre-existing and was measured this session on the untouched tree as well as the
+changed one (1 in 20 baseline, on `clamp`; 1 in 6 on the changed tree, on
+`stepSpring3`; the file passes 8 of 8 in isolation). If your run goes red there
+and your change did not touch `core/math/`, re-run before you go looking — and
+if you do go looking, the filing is where to start, not the harness.

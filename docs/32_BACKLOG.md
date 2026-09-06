@@ -39,8 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-**BL-065** — `QueryCache.query` takes the bottom of the def family, so every direct
-caller casts. Claimed 2026-09-06; see `33_CURRENT_TASK.md`.
+_Nothing in progress._
 
 ## Ready — Phase 0: Foundation
 
@@ -97,15 +96,6 @@ caller casts. Claimed 2026-09-06; see `33_CURRENT_TASK.md`.
   - [x] Test-file scope stated explicitly — **tests are in scope**, and they are the whole reason the rule bites. No source file is over 500 (largest: `allocationHarness.ts` at 422), so a sources-only rule would have enforced the limit precisely where nobody was breaking it
 - **Notes:** Filed 2026-08-30 by BL-068. **Done 2026-09-01**, see `34_DEVELOPMENT_LOG.md` and decision **0029**. Three test files split at existing `describe` seams, each into a pair plus a small fixture module: `World.test.ts` 547 → 262 + 278 + 42, `EventBus.test.ts` 533 → 332 + 212 + 41, `Rng.test.ts` 509 → 204 + 235 + 113. **Suite count unchanged at 342 pass / 0 fail across 88 suites**, which is the check that matters for a move (BL-068's Surprise 3). **The rule was verified to fire rather than assumed to** — a 511-line probe reports the violation and was then removed; a rule that cannot fail is not a rule. The fixture modules reverse decision 0028's alternative (c) deliberately: 0028 preferred visible duplication for fixtures that were "three lines and stable", and `Rng`'s shared block is 113 lines of chi-square machinery whose critical values are stated rather than eyeballed. `Query.test.ts` is left at **499**, one under — the next case anybody adds now fails lint, which is the rule working, and the failure says what to do.
 
-### BL-065 — `QueryCache.query` takes the bottom of the def family, so every direct caller casts
-- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** 04
-- **Description:** `QueryCache.query(...defs: readonly AnyComponentDef[])` where `AnyComponentDef = ComponentDef<never>` — the *bottom* of the family, which nothing but itself is assignable to under `exactOptionalPropertyTypes`. So a caller holding a `ComponentDef<Vec>` must cast; `Query.test.ts` carries an `anyDef<T>` helper for exactly this, and `World.query` carries one erasing cast for the same reason. A query never reads a def's value type, so `ComponentDef<unknown>` — the top — is the correct parameter and every caller loses its cast.
-- **Acceptance criteria:**
-  - [ ] `QueryCache.query` accepts any `ComponentDef<T>` with no cast at the call site
-  - [ ] `World.query`'s cast and `Query.test.ts`'s `anyDef<T>` helper are both deleted
-  - [ ] `AnyComponentDef` is either re-pointed or removed; if it stays, its doc says which position it is for
-- **Notes:** Filed 2026-08-23 by BL-061, which chose `ComponentDef<unknown>` for `World.query`'s own signature and left `QueryCache`'s alone — changing another module's public signature is the scope expansion `35` §3 forbids. Purely ergonomic; nothing is wrong today, and the one cast is erasure rather than a widening.
-
 ### BL-072 — The other `tasks/*.md` name `pnpm` commands and are still uncovered
 - **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
 - **Description:** Filed 2026-09-03 by BL-070, which covered exactly the three files its criteria named. Two more `tasks/*.md` name a `pnpm` command: `tasks/phase_3_crafting.md` names `pnpm tools:balance` (no script, no owning item), and `tasks/phase_7_multiplayer.md` names `pnpm --filter server sim-smoke`. The second is invisible to the check by construction — `PNPM_COMMAND`'s `(?!--)` skips a flag, so `pnpm --filter <pkg> <script>` is never read as a command at all, and that is a gap in the pattern rather than in the list.
@@ -121,6 +111,15 @@ caller casts. Claimed 2026-09-06; see `33_CURRENT_TASK.md`.
   - [ ] The status banner says something true about where the repository actually is
   - [ ] There is exactly one workflow document, and every reference to it resolves — the duplicate is deleted or made a pointer, not left to drift further
 - **Notes:** Overlaps **BL-021** (root documentation files), which owns `README.md`, `CLAUDE.md` and "the `.github/AI_DEVELOPMENT_WORKFLOW.md` reference from the repo root" and is unstarted. Filed separately anyway because BL-021 is broad and unscheduled while these are two specific false statements, one of them the first line a visitor reads. Whoever takes BL-021 first should absorb this and close it. **Note the duplicate is the more dangerous half**: `tools/check-doc-commands.ts` covers `docs/AI_DEVELOPMENT_WORKFLOW.md` and not the `.github/` copy, so the copy can rot silently while the check reports clean.
+
+### BL-074 — `allocation.test.ts` fails about one run in twenty, on whichever operation catches a stray sample
+- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs to read:** 29
+- **Description:** `packages/client/src/core/math/allocation.test.ts` asserts each operation's `attributedBytes <= allowance`, where the allowance is `controlBytes / 100` measured in the same process. Under full-suite load the sampling profiler occasionally attributes one sample to an allocation-free operation, and a single sample carries the whole sampling interval's weight — enough to clear an allowance derived from a control that read low in the same contended run. **Measured 2026-09-06 while landing BL-065, on the untouched tree as well as the changed one, which is what establishes it is not BL-065's:** 1 failure in 20 baseline full-suite runs (`clamp attributed 1344 bytes over 200000 calls, allowance 635.12`) and 1 in 6 on the changed tree (`stepSpring3 attributed 1040, allowance 718.08`). **A different operation each time**, which is the tell: nothing is wrong with `clamp` or `stepSpring3`, and running the file alone passes 8 of 8.
+- **Acceptance criteria:**
+  - [ ] The assertion distinguishes "this operation allocates per call" from "one stray sample landed in its frames" — 200,000 calls allocating one object each is ~10^7 bytes against the ~10^3 seen here, so there are four orders of magnitude to place a boundary in
+  - [ ] Whatever replaces it is verified able to **fail**, per BL-069's and BL-063's precedent: a deliberately allocating operation must still be caught
+  - [ ] The allowance's dependence on a control measured under the same contention is either removed or stated, since a low control is half of why the margin closes
+- **Notes:** Filed 2026-09-06 by BL-065, which measured it and deliberately did not fix it (`35` §3 — a type-only ECS change is not the place to redesign an allocation harness). **Do not fix this by raising the allowance blindly**: the harness's own comment argues the factor of 100 is "slack in the middle of a two-order-of-magnitude gap", and the failures show the gap is not two orders in the direction that matters — the stray-sample floor is ~10^3 bytes and the allowance lands near it whenever the control reads low. Raising the constant without saying what the new number is a hundredth *of* would repeat the mistake at a larger size. **Nor by deleting the control**: BL-050's first dead end was a harness whose signal was always zero, and the control is what rules that out.
 
 ### BL-008 — Fixed-timestep game loop
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-059 · **Docs:** 04, 09
@@ -435,6 +434,19 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-065 — `QueryCache.query` takes the bottom of the def family, so every direct caller casts
+- **Completed:** 2026-09-06 · **PR:** — (pushed direct to `main`)
+- `sim/ecs/Query.ts`, `sim/World.ts`, `sim/ecs/Query.test.ts`, `sim/ecs/Query.limit.test.ts`, new `sim/ecs/Query.defTypes.test.ts`, decision **0031**. Suite **349 → 353 pass / 0 fail**, **89 → 90 suites**. `lint`, `lint:rules`, `lint:docs`, `typecheck` all clean.
+- **All three criteria met.** `AnyComponentDef` is re-pointed from `ComponentDef<never>` to `ComponentDef<unknown>` and its doc says which position it is for; `QueryCache.query` accepts any `ComponentDef<T>` with no cast; `World.query`'s erasing `as` is deleted.
+- **Both copies of `anyDef<T>` are gone, not only the one the criteria name.** `Query.limit.test.ts` carried its own, added by BL-063 four days after this item was filed, and deleting only the named one would have left the helper alive next door — which the previous handoff flagged and is the reason it is worth stating here.
+- **This is decision 0027's widening one level down, not a new decision.** 0027 chose exactly this direction for `ErasedStore` and recorded that every member a caller uses is covariant in `T`; the same holds here because a query reads a def for identity only. 0027 and 0030 both say in as many words that they do not solve this item.
+- **A consequence worth knowing about is in decision 0031**: `registry.store(someAnyComponentDef)` now yields `ComponentStore<unknown>`, whose `set` accepts any value, where it used to yield `ComponentStore<never>`, whose `set` accepted none. No new capability — `store<unknown>(def)` was always spellable — but a shorter accidental path, and the reason `AnyComponentDef`'s doc says it is a parameter type and not a storage type.
+- **The private surface moved with the parameter.** `CachedQuery.stores`, `storesFor` and `intersect` all said `ComponentStore<never>`; typecheck found each in turn rather than any of them being noticed by reading.
+- **Deleting the casts exposed three more.** Three `store.set(e, 1 as never)` writes in `Query.test.ts` became unnecessary assertions the moment the stores stopped being `ComponentStore<never>`, and lint — not review — caught them.
+- **Verified able to fail, following BL-063's and BL-069's precedent, sources restored from byte-checked backups after each.** Re-pointing the type back to the bottom fails the build with **52 errors**; deleting either `@ts-expect-error` in the new file reports the assignment it suppresses.
+- **New file rather than cases in `Query.test.ts`**, which sits at 494 of 500 against `max-lines` at `error` — the seam decision 0029 predicted and BL-063 already used once.
+- **Discovered work: BL-074**, a pre-existing ~1-in-20 flake in `allocation.test.ts`, measured on the untouched tree as well as the changed one and deliberately not fixed here.
 
 ### BL-063 — `QueryCache` has no eviction
 - **Completed:** 2026-09-04 · **PR:** — (pushed direct to `main`)
