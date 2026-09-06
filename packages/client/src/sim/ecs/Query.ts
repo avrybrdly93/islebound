@@ -118,8 +118,29 @@ import type { ComponentRegistry } from '@sim/ecs/ComponentRegistry';
 import type { ComponentStore } from '@sim/ecs/ComponentStore';
 import type { EntityAllocator, EntityId } from '@sim/ecs/EntityAllocator';
 
-/** A def with its value type erased, which is all a query needs. */
-export type AnyComponentDef = ComponentDef<never>;
+/**
+ * A def in the position a query uses it: identity only, value type unread.
+ *
+ * **This is the *top* of the def family, and which end it is matters.** It was
+ * `ComponentDef<never>` until BL-065 — the *bottom*, which nothing but itself
+ * is assignable to under `exactOptionalPropertyTypes`, so every caller holding
+ * a real `ComponentDef<Transform>` had to cast to reach `query`. The top is the
+ * correct parameter because a query never reads `T`: it uses a def for map
+ * identity and hands it to {@link ComponentRegistry.store}. Every
+ * `ComponentDef<T>` is a `ComponentDef<unknown>`, since `T` appears only in an
+ * optional readable property and is therefore covariant, so callers lose their
+ * casts with no assertion anywhere.
+ *
+ * That is decision **0027**'s widening applied one level down — 0027 chose
+ * exactly this direction for `ErasedStore` and said in as many words that it
+ * did not solve this. The reasoning transfers because the reason is the same:
+ * the value type is not read on this path.
+ *
+ * **It is a parameter type, not a storage type.** Anything that would *write* a
+ * component value is contravariant in `T` and cannot use it — that is why
+ * `ErasedStore` has no `set` (0027 again), and the same argument applies here.
+ */
+export type AnyComponentDef = ComponentDef<unknown>;
 
 /**
  * The most distinct signatures one cache will hold before it refuses a new one.
@@ -141,7 +162,7 @@ export const SIGNATURE_LIMIT = 64;
 /** One cached intersection, with everything needed to decide if it is stale. */
 interface CachedQuery {
   /** The stores the result was computed from, in signature order. */
-  readonly stores: readonly ComponentStore<never>[];
+  readonly stores: readonly ComponentStore<unknown>[];
   /** Each store's `version` at computation time, parallel to {@link stores}. */
   readonly storeVersions: number[];
   /** The allocator's `version` at computation time. */
@@ -300,8 +321,8 @@ export class QueryCache {
   }
 
   /** The stores a signature spans, deduplicated the same way. */
-  private storesFor(defs: readonly AnyComponentDef[]): ComponentStore<never>[] {
-    const stores: ComponentStore<never>[] = [];
+  private storesFor(defs: readonly AnyComponentDef[]): ComponentStore<unknown>[] {
+    const stores: ComponentStore<unknown>[] = [];
     const seen = new Set<AnyComponentDef>();
     for (const def of defs) {
       if (seen.has(def)) continue;
@@ -340,7 +361,7 @@ export class QueryCache {
  * which also makes it directly testable against a hand-built store set,
  * without a cache in the way.
  */
-function intersect(stores: readonly ComponentStore<never>[]): EntityId[] {
+function intersect(stores: readonly ComponentStore<unknown>[]): EntityId[] {
   let driver = stores[0];
   if (driver === undefined) return [];
   for (const store of stores) {
