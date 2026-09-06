@@ -39,7 +39,8 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-_Nothing in progress._
+**BL-065** — `QueryCache.query` takes the bottom of the def family, so every direct
+caller casts. Claimed 2026-09-06; see `33_CURRENT_TASK.md`.
 
 ## Ready — Phase 0: Foundation
 
