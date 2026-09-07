@@ -4,82 +4,86 @@
 
 ---
 
-## Status: IN_PROGRESS — BL-072
+## Status: IDLE
 
-**The other `tasks/*.md` name `pnpm` commands and are still uncovered.**
-Phase 0 · Size S · Depends on: — · Docs to read: — (plus `04`, `05`, `06` per
-`AI_DEVELOPMENT_WORKFLOW.md` §3).
+No task in progress. **BL-072 is complete** (2026-09-07) —
+`tools/check-doc-commands.ts` now covers **eleven** documents (the three
+agent-facing ones plus **every** `tasks/*.md`) and reads
+`pnpm --filter <selector> <script>`, resolving the selector against the
+workspace members and checking the script against *that package's* manifest.
+Decision **0032** carries the argument. See `34_DEVELOPMENT_LOG.md`
+2026-09-07 — its **Surprises** 1 and 4 are the ones worth reading.
 
-Claimed 2026-09-07. It is the topmost unblocked Phase-0 Ready item, checked
-against the file rather than taken from the previous handoff: **BL-056** is
-still `Phase: 1` and so is not a candidate under phase discipline;
-**BL-067**'s own notes still say it "should not be taken before `23` has a
-shape", and `23_SAVE_SYSTEM.md` still mentions `EntitySave` exactly once
-(§2 line 38) and defines it nowhere; BL-059, BL-066, BL-068 and BL-069 are
-done. BL-072 is next.
+Suite unchanged at **353 pass / 0 fail across 90 suites** (no runtime code
+changed). `lint`, `lint:rules`, `lint:docs`, `typecheck` all clean.
 
-### Acceptance criteria
+## Next action for an agent
 
-1. `COVERED_DOCS` includes every `tasks/*.md`, and `pnpm lint:docs` is green
-   with them in.
-2. Either `pnpm --filter <pkg> <script>` is read and checked against that
-   package's `package.json`, or the pattern's blindness to it is stated in the
-   module header as a deliberate limit.
+The topmost unblocked task in Phase 0's Ready list, per
+`AI_DEVELOPMENT_WORKFLOW.md` §2.
 
-### The decision on criterion 2, taken before the code and on a measurement
+**Read the file, do not trust this line.** In list order:
 
-**Implement it, do not declare it out of scope.** The backlog's own wording is
-that the blindness "is a gap in the pattern rather than in the list", and the
-one command it hides is the only `--filter` reference in any covered document —
-so declaring it out of scope would leave the check reporting clean over exactly
-the case that motivated the task.
+- **BL-056** is still **Phase 1** — not a candidate under phase discipline.
+  Sixteenth session running.
+- **BL-067** is still the one to skip, **on its own instruction** rather than
+  on your judgement. Re-checked this session with the grep the previous handoff
+  names: `23_SAVE_SYSTEM.md` mentions `EntitySave` exactly once (§2, line 38)
+  and defines it nowhere, so there is still no *component-level* format, which
+  is what BL-067's first criterion presumes.
+- **BL-073** is now the topmost that is actually ready.
 
-The one thing that had to be established first was **how `--filter` resolves a
-selector**, because the check has to reproduce it. `tasks/phase_7_multiplayer.md`
-writes `pnpm --filter server sim-smoke` while `packages/server/README.md` says
-the package will be named `@halcyon/server`, and the root `package.json`'s own
-`dev` script writes the **scoped** form (`pnpm --filter @halcyon/client dev`) —
-which reads like the doc naming a selector that will not match. **It was probed
-rather than assumed, and the assumption was wrong:** `pnpm --filter client
-typecheck` matches `@halcyon/client`, `pnpm --filter shared typecheck` matches
-`@halcyon/shared`, and `pnpm --filter nonexistentpkg typecheck` reports "No
-projects matched the filters". A bare selector matches the unscoped tail. So the
-doc is **correct as written** and there is no doc bug here to fix — but the
-check must match both forms or it would invent one.
+Then **BL-074**, **BL-077** (filed this session), then **BL-008**.
 
-### Plan
+## Why BL-073 is a reasonable next task, and the trap in it
 
-1. File the two Icebox items that will own `pnpm tools:balance` and
-   `pnpm --filter server sim-smoke`, so `UNBUILT_COMMANDS` has real ids to
-   point at rather than prose. This is BL-071's precedent, filed by BL-070 for
-   exactly this reason. (`Next free ID` in `32` is stale at BL-071 — BL-071
-   through BL-074 all exist — and is corrected while allocating.)
-2. Extend `tools/check-doc-commands.ts` to read `pnpm --filter <selector>
-   <script>`: resolve the selector against the workspace members' manifests by
-   full name and by unscoped tail, and check the script against **that
-   package's** `scripts`, not the root's. Route forward references through a
-   filtered table, keyed on selector-and-script, with the same
-   "name the item beside the command" requirement the unfiltered rule has.
-3. Add every `tasks/*.md` to `COVERED_DOCS`.
-4. Annotate `tasks/phase_3_crafting.md` and `tasks/phase_7_multiplayer.md` with
-   the owning backlog ids beside the commands, which is what turns criterion 1
-   green.
-5. Verify each new rule is **able to fail**, per BL-069's and BL-062's
-   precedent — a check nobody has seen go red is not evidence. Perturb: an
-   unknown selector, a real selector with an unknown script, a filtered forward
-   reference with its id removed, and a `tasks/*.md` file dropped from the list.
-6. Run the verify block, then `32` → Done + discovered work, `33` → IDLE,
-   `34` entry with **Surprises**.
+BL-073 is two false statements in `README.md`: the status banner still says
+**"pre-implementation … code begins at `docs/32_BACKLOG.md` → BL-001"** when
+BL-001 through BL-072 have landed, and it points agents at
+**`.github/AI_DEVELOPMENT_WORKFLOW.md`**, which does not exist — the file at
+that path is `.github/AI_DEVELOPMENT_WORKFLOW`, with no extension, a shorter
+copy of `docs/AI_DEVELOPMENT_WORKFLOW.md`.
 
-### Known before starting
+Three things to know before starting:
 
-`packages/server` exists as a directory with a README and **no `package.json`**,
-deliberately — it "is not yet a pnpm workspace member" until Phase 7 opens. So
-the filtered reference is a forward reference in two ways at once (no member, no
-script), which is precisely the case the annotation rule exists for.
+1. **The duplicate is the dangerous half, and this session made it slightly
+   worse.** `tools/check-doc-commands.ts` covers `docs/AI_DEVELOPMENT_WORKFLOW.md`
+   and not the `.github/` copy, so the copy can rot silently while the check
+   reports clean — and the check's coverage list just grew by six files without
+   the copy among them. Criterion 2 ("exactly one workflow document, and every
+   reference to it resolves") is the fix; deleting the copy or making it a
+   pointer both satisfy it, and the copy being invisible to `lint:docs` is the
+   argument for not leaving it as a copy.
+2. **It overlaps BL-021 and BL-055**, both unstarted. BL-021 owns `README.md`,
+   `CLAUDE.md` and this exact path reference; BL-055 is the path reference
+   alone. Whoever takes any one of the three should absorb the others rather
+   than leave two items pointing at a fixed problem.
+3. **Five documents point at the missing path**: `README.md`, `CLAUDE.md`,
+   `docs/32_BACKLOG.md`, `docs/34_DEVELOPMENT_LOG.md`, `docs/35_AI_AGENT_RULES.md`.
+   Fixing one is not the criterion.
 
-**BL-074 makes about one full-suite run in twenty fail on
-`allocation.test.ts`**, on a different operation each time. It is pre-existing
-and was measured on the untouched tree. This task touches no runtime code at
-all, so a red run there is not this task's.
+## The standing question, unchanged and now larger
 
+**Six** `S` items now sit ahead of **BL-008**, the `M` the phase is actually
+for — BL-073, BL-074 and BL-077 among them, and BL-077 was filed this session
+against code this session did not write, exactly as BL-074 was filed last
+session. That is the backlog working as intended, but a phase that only ever
+services its own discoveries does not reach its exit criteria. Worth a human
+deciding whether BL-008 should be pinned ahead of the `S` queue.
+
+## Two things to know before you trust a red run
+
+1. **BL-074 makes about one full-suite run in twenty fail on
+   `allocation.test.ts`, and it will not be the same operation twice.** It is
+   pre-existing and was measured on the untouched tree (1 in 20 baseline, on
+   `clamp`; the file passes 8 of 8 in isolation). If your run goes red there and
+   your change did not touch `core/math/`, re-run before you go looking — and if
+   you do go looking, the filing is where to start, not the harness.
+2. **`pnpm format:check` is red on `main` right now, on two files nobody has
+   formatted** (`Query.test.ts`, `Query.defTypes.test.ts`). That is **BL-077**,
+   measured this session on the untouched tree. The reason it went unnoticed is
+   the useful part: **the verify block does not contain `format:check`**, so
+   every recent session reported "all clean" truthfully while it was failing.
+   If you run it and it is red on exactly those two files, that is the known
+   state — and `pnpm format` is safe to run on them (checked: it *shrinks*
+   `Query.test.ts` from 494 to 491, so the 500-line hard limit is not in play).

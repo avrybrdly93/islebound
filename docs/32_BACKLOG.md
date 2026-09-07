@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-077**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-078**.
 
 **Task format:**
 
@@ -39,7 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-**BL-072** — The other `tasks/*.md` name `pnpm` commands and are still uncovered. Claimed 2026-09-07; see `docs/33_CURRENT_TASK.md`.
+_Nothing in progress._
 
 ## Ready — Phase 0: Foundation
 
@@ -96,14 +96,6 @@ Current phase: **Phase 0 — Foundation**
   - [x] Test-file scope stated explicitly — **tests are in scope**, and they are the whole reason the rule bites. No source file is over 500 (largest: `allocationHarness.ts` at 422), so a sources-only rule would have enforced the limit precisely where nobody was breaking it
 - **Notes:** Filed 2026-08-30 by BL-068. **Done 2026-09-01**, see `34_DEVELOPMENT_LOG.md` and decision **0029**. Three test files split at existing `describe` seams, each into a pair plus a small fixture module: `World.test.ts` 547 → 262 + 278 + 42, `EventBus.test.ts` 533 → 332 + 212 + 41, `Rng.test.ts` 509 → 204 + 235 + 113. **Suite count unchanged at 342 pass / 0 fail across 88 suites**, which is the check that matters for a move (BL-068's Surprise 3). **The rule was verified to fire rather than assumed to** — a 511-line probe reports the violation and was then removed; a rule that cannot fail is not a rule. The fixture modules reverse decision 0028's alternative (c) deliberately: 0028 preferred visible duplication for fixtures that were "three lines and stable", and `Rng`'s shared block is 113 lines of chi-square machinery whose critical values are stated rather than eyeballed. `Query.test.ts` is left at **499**, one under — the next case anybody adds now fails lint, which is the rule working, and the failure says what to do.
 
-### BL-072 — The other `tasks/*.md` name `pnpm` commands and are still uncovered
-- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
-- **Description:** Filed 2026-09-03 by BL-070, which covered exactly the three files its criteria named. Two more `tasks/*.md` name a `pnpm` command: `tasks/phase_3_crafting.md` names `pnpm tools:balance` (no script, no owning item), and `tasks/phase_7_multiplayer.md` names `pnpm --filter server sim-smoke`. The second is invisible to the check by construction — `PNPM_COMMAND`'s `(?!--)` skips a flag, so `pnpm --filter <pkg> <script>` is never read as a command at all, and that is a gap in the pattern rather than in the list.
-- **Acceptance criteria:**
-  - [ ] `COVERED_DOCS` includes every `tasks/*.md`, and `pnpm lint:docs` is green with them in
-  - [ ] Either `pnpm --filter <pkg> <script>` is read and checked against that package's `package.json`, or the pattern's blindness to it is stated in the module header as a deliberate limit
-- **Notes:** The `--filter` half is the interesting one and the reason this is not a one-line repeat of BL-070: a filtered script lives in a workspace package's manifest, not the root's, so checking it means resolving the package first. Deciding it is out of scope is a legitimate answer — but it should be written down, because a silent blind spot in a check is worse than a stated one.
-
 ### BL-073 — Two statements in `README.md` are now false
 - **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
 - **Description:** Filed 2026-09-03 by BL-070, which was editing `README.md` and deliberately did not ride along (`35` §3). (1) The status banner says **"pre-implementation ... code begins at `docs/32_BACKLOG.md` → BL-001"**; BL-001 through BL-070 have landed, the repository has packages, a build and 342 passing tests, so the first thing a visitor reads is wrong. (2) It points agents at **`.github/AI_DEVELOPMENT_WORKFLOW.md`**, which does not exist — the file at that path is `.github/AI_DEVELOPMENT_WORKFLOW`, with no extension, an 81-line copy of the 89-line `docs/AI_DEVELOPMENT_WORKFLOW.md`. **Five documents** point at the missing path: `README.md`, `CLAUDE.md`, `docs/32_BACKLOG.md`, `docs/34_DEVELOPMENT_LOG.md`, `docs/35_AI_AGENT_RULES.md`.
@@ -120,6 +112,14 @@ Current phase: **Phase 0 — Foundation**
   - [ ] Whatever replaces it is verified able to **fail**, per BL-069's and BL-063's precedent: a deliberately allocating operation must still be caught
   - [ ] The allowance's dependence on a control measured under the same contention is either removed or stated, since a low control is half of why the margin closes
 - **Notes:** Filed 2026-09-06 by BL-065, which measured it and deliberately did not fix it (`35` §3 — a type-only ECS change is not the place to redesign an allocation harness). **Do not fix this by raising the allowance blindly**: the harness's own comment argues the factor of 100 is "slack in the middle of a two-order-of-magnitude gap", and the failures show the gap is not two orders in the direction that matters — the stray-sample floor is ~10^3 bytes and the allowance lands near it whenever the control reads low. Raising the constant without saying what the new number is a hundredth *of* would repeat the mistake at a larger size. **Nor by deleting the control**: BL-050's first dead end was a harness whose signal was always zero, and the control is what rules that out.
+
+### BL-077 — Two test files have never been formatted, and no gate would notice
+- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
+- **Description:** `prettier --check .` fails on `packages/client/src/sim/ecs/Query.test.ts` and `packages/client/src/sim/ecs/Query.defTypes.test.ts`. **Measured 2026-09-07 by BL-072 on the untouched tree**, so it is not BL-072's: both were left unformatted by BL-065, whose log entry reports `lint`, `lint:rules`, `lint:docs` and `typecheck` clean and does not mention `format:check` — because **the verify block in `CLAUDE.md` and `AI_DEVELOPMENT_WORKFLOW.md` §6 does not contain it**. `pnpm format:check` exists as a script and nothing runs it.
+- **Acceptance criteria:**
+  - [ ] `pnpm format:check` is clean on the whole tree
+  - [ ] Something runs it that a session cannot forget — the verify block, or CI (BL-019), or both; a script nobody invokes is how this happened
+- **Notes:** The obvious worry is the 500-line limit, since `Query.test.ts` sits at 494 of 500 and `max-lines` is at `error`. **Checked before filing: formatting *shrinks* it to 491** and grows `Query.defTypes.test.ts` from 111 to 115, so there is no collision and the fix really is `pnpm format`. That check is the whole reason this is a filing rather than a one-line fix ridden along — had it gone the other way the item would have needed a seam, not a formatter. Note BL-019 (CI pipeline) may absorb the second criterion; whoever takes it first should say so.
 
 ### BL-008 — Fixed-timestep game loop
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-059 · **Docs:** 04, 09
@@ -436,6 +436,17 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-072 — The other `tasks/*.md` name `pnpm` commands and are still uncovered
+- **Completed:** 2026-09-07 · **PR:** — (pushed direct to `main`)
+- `tools/check-doc-commands.ts`, `tasks/phase_3_crafting.md`, `tasks/phase_7_multiplayer.md`, decision **0032**, new items **BL-075**, **BL-076**, **BL-077**. Suite unchanged at **353 pass / 0 fail across 90 suites** — this task touches no runtime code. `lint`, `lint:rules`, `lint:docs`, `typecheck` all clean.
+- **Both criteria met.** `COVERED_DOCS` is now eleven documents: the three agent-facing ones and **every** `tasks/*.md`. The `--filter` form is read and checked rather than declared out of scope.
+- **Criterion 2 was decided before the code and on a probe, and the probe changed the answer.** `tasks/phase_7_multiplayer.md` writes `pnpm --filter server sim-smoke` while `packages/server/README.md` says the package will be `@halcyon/server`, and the root `dev` script writes the scoped form — which reads like a document naming a selector that cannot match. It is not: `pnpm --filter client typecheck` resolves to `@halcyon/client` and `--filter nonexistentpkg` reports "No projects matched the filters". **A bare selector matches the unscoped tail.** Reasoned about instead of run, the check would have enforced an invented convention across five documents.
+- **The blindness was in the pattern, not the list**, which is why implementing beat declaring. `PNPM_COMMAND`'s `(?!--)` skipped the flag, so the one `--filter` reference in any covered document was never read as a command — the check reported clean over it *by construction*. A declared limit would have left that true.
+- **What the selector support does not do is written into the module header**, per the item's own note that a silent blind spot is worse than a stated one: globs, path selectors, `...` traversal and `[<since>]` are unsupported, none appears in any covered document, and an unresolvable selector is **reported** rather than skipped. Skipping is the failure mode being removed; rebuilding it one level down would have been the easy mistake.
+- **Six perturbations, each run, sources restored from backups.** A filtered forward reference losing its id, an unresolvable selector with no table row, a real package with a missing script, an unfiltered id removed in a newly covered file, and a **stale** row on a command that now exists — all caught. The sixth is the one that justifies the list half: the same broken reference in a file dropped from `COVERED_DOCS` reports **"10 document(s) clean"**.
+- **The stale-row perturbation found a real defect in the first draft.** The filtered rule was split between the scanner and its caller, and a stale row was then suppressed whenever the document still carried the annotation — precisely when a stale row is most likely to be there. The whole rule now lives in one function.
+- **Discovered work: BL-077**, two test files that have never been formatted, measured on the untouched tree. The interesting half is *why nobody noticed*: `pnpm format:check` exists and no verify block or gate runs it.
 
 ### BL-065 — `QueryCache.query` takes the bottom of the def family, so every direct caller casts
 - **Completed:** 2026-09-06 · **PR:** — (pushed direct to `main`)

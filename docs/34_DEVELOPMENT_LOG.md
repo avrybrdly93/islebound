@@ -34,6 +34,47 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-07 — BL-072 The doc-command check reads `pnpm --filter`, and covers every `tasks/*.md`
+
+**Type:** feature
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~2h
+
+### What changed
+
+`tools/check-doc-commands.ts` gained the remaining six `tasks/*.md` — eleven covered documents now, the three agent-facing ones plus every phase task file — and, more importantly, learned to read `pnpm --filter <selector> <script>`. The selector resolves against the workspace members' manifests and the script is checked against *that package's* `scripts` rather than the root's; forward references go through a second table keyed on the selector-and-script pair. `tasks/phase_3_crafting.md` and `tasks/phase_7_multiplayer.md` now name **BL-075** and **BL-076** beside their commands, which is what makes the check green. Decision **0032** carries the argument.
+
+### Why it was done this way
+
+The item's second criterion offered a choice: read the filtered form, or declare the pattern's blindness to it a stated limit. Implementing won on one fact — **the only `--filter` reference in any covered document is the one the item was filed about**, so declaring it out of scope would have documented the gap and left it complete. The check was reporting `tasks/phase_7_multiplayer.md` clean *by construction rather than by inspection*, which is the worst state a check can be in, because it is indistinguishable from having looked.
+
+Reproducing pnpm's whole selector grammar was rejected as scope — globs, path selectors, `...` traversal and `[<since>]` appear nowhere here — but the honest version of that is to support the one form in use and **fail loudly on the rest**, so an unresolvable selector is a finding rather than a skip. Skipping is precisely the failure mode this change removes; rebuilding it one level down would have been the easy mistake.
+
+Two `Icebox` items were filed first, so `UNBUILT_COMMANDS` had real ids to point at rather than prose — BL-071's shape, filed by BL-070 for exactly this reason.
+
+### Surprises
+
+1. **The probe reversed the answer, and reasoning would have got it wrong.** `tasks/phase_7_multiplayer.md` writes `pnpm --filter server sim-smoke`, `packages/server/README.md` says the package will be `@halcyon/server`, and the root `package.json`'s own `dev` script writes the **scoped** form (`pnpm --filter @halcyon/client dev`). That reads like a document naming a selector that cannot match, and the plan very nearly included fixing five documents. It was run instead: `pnpm --filter client typecheck` resolves to `@halcyon/client`, `--filter shared` to `@halcyon/shared`, and `--filter nonexistentpkg` reports "No projects matched the filters". **A bare selector matches the unscoped tail.** The documents are right as written, and a check built on the guess would have enforced an invented convention across the repository.
+2. **A perturbation found a real defect in the first draft, again.** BL-069's lesson keeps paying. The filtered rule was split between the scanner and its caller — "no table row" in one place, "row exists but the item is not named beside it" in the other — and the split silently suppressed the **stale-row** case whenever the document still carried the annotation, which is exactly when a stale row is likeliest to be there. Only the fifth perturbation exposed it. The whole rule lives in one function now.
+3. **The sixth perturbation is the one that justifies the boring half of the task.** Dropping `tasks/phase_3_crafting.md` from `COVERED_DOCS` and removing its annotation makes the check print **"10 document(s) clean"** over a reference it would otherwise reject. The list is not bookkeeping; it is the whole scope of the claim the check makes.
+4. **`prettier --check .` has been failing on two test files and nothing noticed.** `Query.test.ts` and `Query.defTypes.test.ts` were left unformatted by BL-065, whose own log entry reports `lint`, `lint:rules`, `lint:docs` and `typecheck` clean — and is *not wrong*, because **the verify block in `CLAUDE.md` and `AI_DEVELOPMENT_WORKFLOW.md` §6 does not contain `format:check`**. The script exists and nothing runs it. Measured on the untouched tree before filing, so it is not this task's, and filed as **BL-077** rather than ridden along. The obvious worry — that formatting would push `Query.test.ts` past the 500-line hard limit it sits six lines under — was checked before filing and goes the other way: formatting **shrinks** it to 491. Had it gone the other way the item would have needed a seam rather than a formatter, which is why that check belongs in the filing.
+
+### Tests
+
+No runtime code changed, so the suite is unchanged at **353 pass / 0 fail across 90 suites**. The check is the deliverable, and it was verified the way this repository verifies checks — by making it fail on purpose. Six perturbations, each run and each restored from a backup: a filtered forward reference losing its id; an unresolvable selector with no table row; a real package with a missing script; an unfiltered id removed in a newly covered file; a stale row on a command that now exists; and the coverage case in surprise 3. Five are caught; the sixth is *not*, by design, and that is what it demonstrates.
+
+`pnpm lint`, `pnpm lint:rules`, `pnpm lint:docs` and `pnpm typecheck` all clean. `pnpm sim` and `pnpm check:bundle` still do not exist (BL-014, BL-018).
+
+### Follow-ups
+
+- **BL-075** — the recipe-balance tool (`pnpm tools:balance`). Icebox; Phase 3 at the earliest.
+- **BL-076** — the server package's headless smoke script (`pnpm --filter server sim-smoke`). Icebox; Phase 7, and a forward reference in two ways at once.
+- **BL-077** — two test files have never been formatted, and no gate would notice. Phase 0.
+- Not filed, and worth a sentence: `docs/*.md` beyond `AI_DEVELOPMENT_WORKFLOW.md` remain uncovered, and `docs/16_CRAFTING_SYSTEM.md`, `docs/36_MULTIPLAYER_ARCHITECTURE.md` and `docs/39_CONTENT_AUTHORING_GUIDE.md` all name the same two commands. **BL-021** (root documentation files) is the broad item in that area and is unstarted; whoever takes it should decide whether `COVERED_DOCS` grows to `docs/` wholesale rather than a file at a time.
+
+---
+
 ## 2026-09-06 — BL-065 `AnyComponentDef` is the top of the def family, not the bottom
 
 **Type:** refactor
