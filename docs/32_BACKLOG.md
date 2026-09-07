@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-071**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-077**.
 
 **Task format:**
 
@@ -39,7 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-_Nothing in progress._
+**BL-072** — The other `tasks/*.md` name `pnpm` commands and are still uncovered. Claimed 2026-09-07; see `docs/33_CURRENT_TASK.md`.
 
 ## Ready — Phase 0: Foundation
 
