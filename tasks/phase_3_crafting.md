@@ -30,7 +30,7 @@ Station queues with tick progression, walk-away continuation, cancellation refun
 Recipes + Materials tabs, discovery events, completion percentages, the new-recipe toast/badge flow. Exit: first-acquisition → unlock → journal entry fires exactly once (idempotence test).
 
 ### M3.7 — Balance tooling
-`pnpm tools:balance` reading the content tables, estimating gather-cost per recipe, exporting `docs/data/recipe-balance.csv`, flagging outliers. Exit: the first-tool-within-6-minutes scenario test (from `docs/29` §2) green against the shipped seed.
+`pnpm tools:balance` (**BL-075** builds it — the script does not exist yet) reading the content tables, estimating gather-cost per recipe, exporting `docs/data/recipe-balance.csv`, flagging outliers. Exit: the first-tool-within-6-minutes scenario test (from `docs/29` §2) green against the shipped seed.
 
 ## Acceptance criteria for closing the phase
 

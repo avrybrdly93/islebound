@@ -12,7 +12,7 @@ Someone can join you. If Phases 1–6 honoured the network-safe checklist, this 
 ## Milestones (in order)
 
 ### M7.1 — The moment of truth
-`packages/server` activates; it imports `@halcyon/sim` and runs 20k headless ticks (`pnpm --filter server sim-smoke`). Exit: green — or a prioritised repair list of every checklist violation, fixed before anything else in this phase.
+`packages/server` activates; it imports `@halcyon/sim` and runs 20k headless ticks (`pnpm --filter server sim-smoke`). **BL-076** builds that script — today `packages/server` is a README with no `package.json`, so it is not a pnpm workspace member and the selector resolves to nothing. Exit: green — or a prioritised repair list of every checklist violation, fixed before anything else in this phase.
 
 ### M7.2 — Transport seam
 The client's intent queue goes behind a `Transport` interface: `LocalTransport` (existing, unchanged behaviour — verified by the full test suite) and a stub `WsTransport`. Exit: single-player bit-identical through the seam (T3 + T9 green through `LocalTransport`).
