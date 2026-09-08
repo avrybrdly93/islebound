@@ -6,7 +6,7 @@ This file is deliberately short. It points; it does not duplicate. **Read the li
 
 ## Before you write code, every session
 
-1. `.github/AI_DEVELOPMENT_WORKFLOW.md` — the session loop
+1. `docs/AI_DEVELOPMENT_WORKFLOW.md` — the session loop
 2. `docs/33_CURRENT_TASK.md` — resume state, or `IDLE`
 3. `docs/32_BACKLOG.md` — take the **topmost unblocked task** in the current phase
 4. `docs/35_AI_AGENT_RULES.md` — the constraints

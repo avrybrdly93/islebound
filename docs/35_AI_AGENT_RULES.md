@@ -1,6 +1,6 @@
 # 35 — AI Agent Rules
 
-Purpose: the binding operating rules for any AI agent working in this repository. `.github/AI_DEVELOPMENT_WORKFLOW.md` describes the *process*; this document describes the *constraints*. When they appear to conflict, this document wins.
+Purpose: the binding operating rules for any AI agent working in this repository. `docs/AI_DEVELOPMENT_WORKFLOW.md` describes the *process*; this document describes the *constraints*. When they appear to conflict, this document wins.
 
 ---
 
@@ -12,7 +12,7 @@ Every rule below serves this. A brilliant change that only you understand is a n
 
 ## 2. Before writing any code
 
-1. Read `.github/AI_DEVELOPMENT_WORKFLOW.md`, `33_CURRENT_TASK.md`, and `32_BACKLOG.md` — in that order.
+1. Read `docs/AI_DEVELOPMENT_WORKFLOW.md`, `33_CURRENT_TASK.md`, and `32_BACKLOG.md` — in that order.
 2. Read `04_TECHNICAL_ARCHITECTURE.md`, `05_CODEBASE_STRUCTURE.md`, `06_ENGINEERING_STANDARDS.md` if you have not this session.
 3. Read the system document(s) for the area your task touches. The task's "Docs to read" field lists them.
 4. If the documentation contradicts the code, **trust the documentation** and flag the discrepancy in `34_DEVELOPMENT_LOG.md` (type: `note`). If you believe the documentation is wrong, propose the change — do not silently code around it.

@@ -4,7 +4,18 @@ A cozy 3D survival-exploration game that runs in the browser. Wash up on a forgo
 
 No combat. No hunger. No death. Nothing on a timer that can punish you.
 
-> **Status: pre-implementation.** The complete design and engineering documentation exists; code begins at `docs/32_BACKLOG.md` → **BL-001**.
+> **Status: Phase 0 — Foundation, in progress.** **21 of the 77 filed backlog
+> items are done** and the repository builds, lints, typechecks and passes
+> **353 tests across 90 suites**. What exists so far is the substrate, not the
+> game: a pnpm workspace, the Vite app shell, a seeded RNG, noise and
+> Poisson-disk sampling, a typed event bus, and ECS-lite end to end — entity
+> allocator, sparse-set component stores, cached queries and the `World` that
+> assembles them. What does not exist yet is the part you could look at: no
+> game loop (**BL-008**), no renderer (**BL-011**), no headless simulation
+> harness (**BL-014**), no CI (**BL-019**).
+>
+> The live state is `docs/32_BACKLOG.md` and `docs/33_CURRENT_TASK.md`, which
+> are updated every session; this banner is a summary and will lag them.
 
 ---
 
@@ -57,7 +68,7 @@ Requires Node 22+ and pnpm 9+. Blender and ffmpeg are needed only for rebuilding
 
 ## How AI agents work on this repository
 
-Agents follow a fixed loop, defined in **`.github/AI_DEVELOPMENT_WORKFLOW.md`**:
+Agents follow a fixed loop, defined in **`docs/AI_DEVELOPMENT_WORKFLOW.md`**:
 
 ```
 orient → select one task → understand → implement → test → verify → document → hand off

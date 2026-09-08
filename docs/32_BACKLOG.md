@@ -10,7 +10,7 @@ Current phase: **Phase 0 — Foundation**
 ## How to use this file
 
 **For agents:**
-1. Read `.github/AI_DEVELOPMENT_WORKFLOW.md` first.
+1. Read `docs/AI_DEVELOPMENT_WORKFLOW.md` first.
 2. Select the **topmost unblocked task in the Ready column of the current phase**. Do not skip ahead to a more interesting task.
 3. Move it to In Progress, put its ID in `33_CURRENT_TASK.md`, and begin.
 4. On completion, move it to Done with the date and PR link, and log in `34_DEVELOPMENT_LOG.md`.
