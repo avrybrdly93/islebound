@@ -4,7 +4,67 @@
 
 ---
 
-## Status: IDLE
+## Status: IN_PROGRESS — **BL-073**
+
+**Two statements in `README.md` are now false.** Taken 2026-09-08 as the
+topmost unblocked task in Phase 0's Ready list, per
+`AI_DEVELOPMENT_WORKFLOW.md` §2. The list was read rather than taken from the
+handoff, and it agrees: **BL-056** is Phase 1, **BL-067** says on its own face
+not to take it before a component-level save format exists (re-checked —
+`23_SAVE_SYSTEM.md` mentions `EntitySave` once, in §2, and defines it
+nowhere), so **BL-073** is topmost.
+
+### Acceptance criteria, from `32`
+
+1. The status banner says something true about where the repository actually is.
+2. There is exactly one workflow document, and every reference to it resolves —
+   the duplicate is deleted or made a pointer, not left to drift further.
+
+### What was measured before any edit
+
+- `.github/AI_DEVELOPMENT_WORKFLOW` is a **file**, not the empty directory
+  BL-055 describes: 81 lines, CRLF, no extension. BL-055's description is
+  stale on that point and its second criterion has to be read as "the
+  duplicate is resolved" rather than literally.
+- **It has already rotted, and by exactly the paragraph a check was built to
+  protect.** Normalised for line endings, the two documents differ in one
+  hunk: the `docs/` copy carries BL-062's eight-line note (which commands do
+  not exist yet and which backlog item builds each), and the `.github/` copy
+  does not. It holds **nothing** the `docs/` copy lacks.
+- **Five live references** name the non-existent `.github/AI_DEVELOPMENT_WORKFLOW.md`:
+  `README.md`:60, `CLAUDE.md`:9, `docs/32_BACKLOG.md`:13,
+  `docs/35_AI_AGENT_RULES.md`:3 and :15. `docs/34_DEVELOPMENT_LOG.md`'s
+  mentions are **log history describing the bug** and are deliberately out of
+  scope — a development log is a record of what was true when it was written.
+
+### Plan
+
+1. Delete `.github/AI_DEVELOPMENT_WORKFLOW`. It is a strict subset of the
+   canonical document, so nothing is lost; `docs/AI_DEVELOPMENT_WORKFLOW.md`
+   is canonical because it is the copy `lint:docs` covers and the one that is
+   current.
+2. Point the five live references at `docs/AI_DEVELOPMENT_WORKFLOW.md`.
+3. Rewrite `README.md`'s status banner to something measured on this tree.
+4. Give criterion 2 teeth: extend `tools/check-doc-commands.ts` so a second
+   workflow document, or a reference to a workflow path that does not exist,
+   fails `pnpm lint:docs`. Confirm it **fails on the pre-fix tree** before
+   the fix lands, per `29` §9's bug-fix row and BL-062's precedent.
+5. Close **BL-055** in the same change — it is this task's criterion 2 exactly
+   — and note in **BL-021** what is left of it.
+6. Verify, document, hand off.
+
+### Deliberately not in scope
+
+`BL-021`'s remaining surface (`CONTRIBUTING.md`, "clone to a passing test run
+using only the README", `CLAUDE.md` under 100 lines) and `BL-077`'s formatter
+run. `35` §3 forbids the ride-along, and BL-077 is its own item with its own
+second criterion about what runs `format:check`.
+
+---
+
+## Previous session (2026-09-07) — kept for its warnings
+
+### Status at that point: IDLE
 
 No task in progress. **BL-072 is complete** (2026-09-07) —
 `tools/check-doc-commands.ts` now covers **eleven** documents (the three
