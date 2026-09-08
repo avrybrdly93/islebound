@@ -12,7 +12,7 @@
     "typecheck": "pnpm -r --if-present run typecheck",
     "lint": "eslint .",
     "lint:rules": "node --experimental-strip-types tools/check-lint-rules.ts",
-    "lint:docs": "node --experimental-strip-types tools/check-doc-commands.ts",
+    "lint:docs": "node --experimental-strip-types tools/check-doc-commands.ts && node --experimental-strip-types tools/check-workflow-doc.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "pnpm test:node",
