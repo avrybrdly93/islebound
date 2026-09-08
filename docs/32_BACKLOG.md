@@ -96,14 +96,6 @@ _Nothing in progress._
   - [x] Test-file scope stated explicitly — **tests are in scope**, and they are the whole reason the rule bites. No source file is over 500 (largest: `allocationHarness.ts` at 422), so a sources-only rule would have enforced the limit precisely where nobody was breaking it
 - **Notes:** Filed 2026-08-30 by BL-068. **Done 2026-09-01**, see `34_DEVELOPMENT_LOG.md` and decision **0029**. Three test files split at existing `describe` seams, each into a pair plus a small fixture module: `World.test.ts` 547 → 262 + 278 + 42, `EventBus.test.ts` 533 → 332 + 212 + 41, `Rng.test.ts` 509 → 204 + 235 + 113. **Suite count unchanged at 342 pass / 0 fail across 88 suites**, which is the check that matters for a move (BL-068's Surprise 3). **The rule was verified to fire rather than assumed to** — a 511-line probe reports the violation and was then removed; a rule that cannot fail is not a rule. The fixture modules reverse decision 0028's alternative (c) deliberately: 0028 preferred visible duplication for fixtures that were "three lines and stable", and `Rng`'s shared block is 113 lines of chi-square machinery whose critical values are stated rather than eyeballed. `Query.test.ts` is left at **499**, one under — the next case anybody adds now fails lint, which is the rule working, and the failure says what to do.
 
-### BL-073 — Two statements in `README.md` are now false
-- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
-- **Description:** Filed 2026-09-03 by BL-070, which was editing `README.md` and deliberately did not ride along (`35` §3). (1) The status banner says **"pre-implementation ... code begins at `docs/32_BACKLOG.md` → BL-001"**; BL-001 through BL-070 have landed, the repository has packages, a build and 342 passing tests, so the first thing a visitor reads is wrong. (2) It points agents at **`.github/AI_DEVELOPMENT_WORKFLOW.md`**, which does not exist — the file at that path is `.github/AI_DEVELOPMENT_WORKFLOW`, with no extension, an 81-line copy of the 89-line `docs/AI_DEVELOPMENT_WORKFLOW.md`. **Five documents** point at the missing path: `README.md`, `CLAUDE.md`, `docs/32_BACKLOG.md`, `docs/34_DEVELOPMENT_LOG.md`, `docs/35_AI_AGENT_RULES.md`.
-- **Acceptance criteria:**
-  - [ ] The status banner says something true about where the repository actually is
-  - [ ] There is exactly one workflow document, and every reference to it resolves — the duplicate is deleted or made a pointer, not left to drift further
-- **Notes:** Overlaps **BL-021** (root documentation files), which owns `README.md`, `CLAUDE.md` and "the `.github/AI_DEVELOPMENT_WORKFLOW.md` reference from the repo root" and is unstarted. Filed separately anyway because BL-021 is broad and unscheduled while these are two specific false statements, one of them the first line a visitor reads. Whoever takes BL-021 first should absorb this and close it. **Note the duplicate is the more dangerous half**: `tools/check-doc-commands.ts` covers `docs/AI_DEVELOPMENT_WORKFLOW.md` and not the `.github/` copy, so the copy can rot silently while the check reports clean.
-
 ### BL-074 — `allocation.test.ts` fails about one run in twenty, on whichever operation catches a stray sample
 - **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs to read:** 29
 - **Description:** `packages/client/src/core/math/allocation.test.ts` asserts each operation's `attributedBytes <= allowance`, where the allowance is `controlBytes / 100` measured in the same process. Under full-suite load the sampling profiler occasionally attributes one sample to an allocation-free operation, and a single sample carries the whole sampling interval's weight — enough to clear an allowance derived from a control that read low in the same contended run. **Measured 2026-09-06 while landing BL-065, on the untouched tree as well as the changed one, which is what establishes it is not BL-065's:** 1 failure in 20 baseline full-suite runs (`clamp attributed 1344 bytes over 200000 calls, allowance 635.12`) and 1 in 6 on the changed tree (`stepSpring3 attributed 1040, allowance 718.08`). **A different operation each time**, which is the tell: nothing is wrong with `clamp` or `stepSpring3`, and running the file alone passes 8 of 8.
@@ -225,7 +217,7 @@ _Nothing in progress._
 
 ### BL-021 — Root documentation files
 - **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** all
-- **Description:** `README.md`, `CLAUDE.md`, `CONTRIBUTING.md`, and the `.github/AI_DEVELOPMENT_WORKFLOW.md` reference from the repo root.
+- **Description:** `README.md`, `CLAUDE.md`, `CONTRIBUTING.md`, and the workflow-document reference from the repo root. **The last of those four is done** — BL-073 (2026-09-08) deleted the duplicate, made `docs/AI_DEVELOPMENT_WORKFLOW.md` canonical, repointed all five references and put `tools/check-workflow-doc.ts` behind `pnpm lint:docs` so it cannot recur; decision **0033**. BL-073 also replaced `README.md`'s status banner, which was the most visibly wrong thing in this item's surface. What is left here is `CONTRIBUTING.md` (does not exist), the two criteria below, and any remaining `README.md` work beyond the banner.
 - **Acceptance criteria:**
   - [ ] A new agent can go from clone to a passing test run using only the README
   - [ ] `CLAUDE.md` is under 100 lines and points to the detailed docs rather than duplicating them
@@ -245,14 +237,6 @@ _Nothing in progress._
 - **Acceptance criteria:**
   - [ ] The cap is a capability-tier value, with the constant as its default
   - [ ] A frame-time measurement at 1080p on at least one integrated GPU justifies the tier values
-
-### BL-055 — Fix the `AI_DEVELOPMENT_WORKFLOW.md` path that three files point at
-- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
-- **Description:** Filed 2026-08-11 while doing BL-005. `CLAUDE.md` ("Before you write code, every session", item 1) and this file ("For agents", step 1) both say `.github/AI_DEVELOPMENT_WORKFLOW.md`. That file does not exist: the workflow is at `docs/AI_DEVELOPMENT_WORKFLOW.md`, and `.github/AI_DEVELOPMENT_WORKFLOW` is an empty **directory**, which is probably how the mistake happened. Every session is told to read that file first and every session has to go and find it.
-- **Acceptance criteria:**
-  - [ ] The path in `CLAUDE.md` and in this file resolves to the real document
-  - [ ] The empty `.github/AI_DEVELOPMENT_WORKFLOW` directory is gone, or holds the file
-- **Notes:** Decide which location is canonical rather than adding a second copy — two copies of the session loop is worse than a wrong path, because a wrong path fails loudly.
 
 ### BL-053 — Drop `--expose-gc` from the test scripts
 - **Phase:** 0 · **Size:** S · **Depends on:** BL-050 · **Docs:** 29
@@ -436,6 +420,23 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-073 — Two statements in `README.md` are now false
+- **Completed:** 2026-09-08 · **PR:** — (pushed direct to `main`)
+- `README.md`, `CLAUDE.md`, `docs/32_BACKLOG.md`, `docs/35_AI_AGENT_RULES.md`, `package.json`, the new `tools/check-workflow-doc.ts`, and the deletion of `.github/AI_DEVELOPMENT_WORKFLOW`. Decision **0033**. Suite unchanged at **353 pass / 0 fail across 90 suites** — no runtime code was touched. `lint`, `lint:rules`, `lint:docs`, `typecheck` and `build` all clean. **`format:check` is still red on BL-077's two files**, unchanged and not this task's.
+- **Both criteria met.** **BL-055 is closed by the same change** and moved here beside this entry — it is criterion 2 stated separately, and the handoff's instruction was to absorb rather than leave two items pointing at a fixed problem.
+- **The copy was deleted rather than made a pointer, and that was decided on a diff rather than a preference.** Normalised for line endings, `.github/AI_DEVELOPMENT_WORKFLOW` differed from the canonical document in exactly **one hunk**: the eight-line paragraph BL-062 added saying which `pnpm` commands do not exist yet and which item builds each. It was a strict subset — **a document that had already silently stopped saying something a previous session put there**, which is the rot BL-073's note predicted, found in the state it predicted. Nothing was lost by deleting it.
+- **BL-055's description is stale and was corrected by measurement**: it says `.github/AI_DEVELOPMENT_WORKFLOW` is an "empty **directory**". It was a file — 81 lines, CRLF, no extension. Its second criterion ("the empty directory is gone, or holds the file") is met either way, the directory being gone entirely.
+- **The check is the deliverable, not the edit**, per BL-062's precedent and `29` §9's bug-fix row. `tools/check-workflow-doc.ts` was written **first** and confirmed failing on the unfixed tree, on exactly the six things BL-073 describes: the stray document and all five live references. It enforces two rules — one document (by filename, in any extension, anywhere outside `node_modules`), and every reference resolves — and runs from `pnpm lint:docs`, which every session already runs.
+- **Its escape hatch is the repository's own contract, not an exclusion list.** `32` and `34` name the broken path on purpose: an item describes the bug it is about, a log records what was true. Forcing those to be rewritten would destroy the record to satisfy a checker. So a mention is legal when a `BL-###` sits beside it — the same "name the item beside it" rule `check-doc-commands.ts` applies to an unbuilt command, sharing even the forward-only annotation scope. An exclusion list would say *this file may rot*; this says *any file may describe a broken path if it says which item the description belongs to*. **A live instruction carries no id and is caught**, which is why all five references failed and neither BL-073's own description nor the log entries did.
+- **The banner was written from a count taken here, not from the item that filed it.** BL-073's description says "BL-001 through BL-070 have landed". They have not: **21 of the 77 filed items are done**, and BL-008 through BL-021 are still in Ready. The banner now says Phase 0 in progress, 21 of 77, 353 tests across 90 suites, and — the part a visitor most needs — that what exists is the substrate and not the game, naming BL-008, BL-011, BL-014 and BL-019 as why there is nothing to look at yet. It also says it lags `32` and `33`, which is how it went stale.
+- **Left for BL-021 on purpose** (`35` §3): `CONTRIBUTING.md`, "clone to a passing test run using only the README", and `CLAUDE.md` under 100 lines. BL-021's third clause — "the `.github/AI_DEVELOPMENT_WORKFLOW.md` reference from the repo root" — is done and its notes now say so.
+
+### BL-055 — Fix the `AI_DEVELOPMENT_WORKFLOW.md` path that three files point at
+- **Completed:** 2026-09-08 · **PR:** — (pushed direct to `main`), as part of **BL-073**
+- Closed by BL-073's criterion 2, which is this item restated with a check attached. Both criteria met: the path in `CLAUDE.md` and `AI_DEVELOPMENT_WORKFLOW.md` resolves (and in three further documents this item did not know about), and `.github/` is gone entirely rather than holding the file.
+- **Its note was right and was followed**: "Decide which location is canonical rather than adding a second copy — two copies of the session loop is worse than a wrong path, because a wrong path fails loudly." That is the argument against leaving a stub behind, and it is why the copy was deleted. `docs/AI_DEVELOPMENT_WORKFLOW.md` is canonical because it is the copy `lint:docs` covers and the one that was current.
+- **Its description was stale on the one fact it turned on** — see BL-073's entry: the `.github/` entry was a file, not an empty directory.
 
 ### BL-072 — The other `tasks/*.md` name `pnpm` commands and are still uncovered
 - **Completed:** 2026-09-07 · **PR:** — (pushed direct to `main`)
