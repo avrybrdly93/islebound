@@ -34,6 +34,47 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-08 — BL-073 One workflow document, and a status banner that is true
+
+**Type:** fix
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~1.5h
+
+### What changed
+
+`.github/AI_DEVELOPMENT_WORKFLOW` is deleted, `docs/AI_DEVELOPMENT_WORKFLOW.md` is the one workflow document, and the five live references that named a `.github/AI_DEVELOPMENT_WORKFLOW.md` existing in neither form now resolve (`README.md`, `CLAUDE.md`, `docs/32_BACKLOG.md`, `docs/35_AI_AGENT_RULES.md` twice). `README.md`'s status banner no longer says "pre-implementation"; it says what this tree measures. New `tools/check-workflow-doc.ts` runs from `pnpm lint:docs` and enforces both halves. **BL-055 is closed by the same change** — it is criterion 2 stated separately. Decision **0033**.
+
+### Why it was done this way
+
+**The copy was deleted rather than stubbed, and the diff decided it rather than a preference.** Normalised for line endings the two documents differed in exactly one hunk: the eight-line paragraph BL-062 added saying which `pnpm` commands do not exist yet and which item builds each. The copy was a **strict subset** — a document that had already silently stopped saying something a previous session put there. BL-055's note had predicted the shape ("two copies of the session loop is worse than a wrong path, because a wrong path fails loudly") and BL-073's had predicted the mechanism (no check covers the `.github/` copy, so it can rot while `lint:docs` reports clean). Both were right, and the rot was already there.
+
+**The check is the deliverable, not the edit**, per BL-062's precedent: written first, confirmed failing on the unfixed tree, on exactly the six things the item describes. Without it this is a wording change that the next `.github/` copy undoes.
+
+**Its escape hatch is the repository's own contract rather than an exclusion list**, and that is the design choice worth keeping. `32` and `34` name the broken path deliberately — an item describes the bug it is about, a log records what was true — so a mention is legal when a `BL-###` sits beside it, in its paragraph or the next: the same rule `check-doc-commands.ts` applies to an unbuilt command, sharing even the forward-only scope. An exclusion list would say *this file may rot*, and the two files that most need to describe broken paths are exactly the two it would stop checking. The rule discriminates without knowing anything about intent — a live instruction carries no id and is caught; a record carries one and is not.
+
+### Surprises
+
+1. **The rot BL-073 warned about had already happened, and by the exact paragraph a check was built to protect.** The note said the `.github/` copy "can rot silently while the check reports clean". It had: it was missing BL-062's forward-reference note and nothing else. The prediction and the evidence for it landed in the same place, which is the strongest form this log's warnings ever take — and it means the copy was not merely redundant but actively wrong for any agent who found it first.
+
+2. **`BL-055`'s description is stale on the one fact it turns on.** It says `.github/AI_DEVELOPMENT_WORKFLOW` is an "empty **directory**, which is probably how the mistake happened". It was a **file** — 81 lines, CRLF, no extension. Its criteria are met either way, but a session that had trusted the description would have gone looking for a directory to delete and found a document with content, which is a different decision. **Measure the thing the item describes before acting on the item's description of it**; this is the second session running to find a stale premise in an item it claimed (the 89th run of the sibling repository found the same class).
+
+3. **BL-073's own description overstates the project's progress, and the banner would have inherited it.** It says "BL-001 through BL-070 have landed". Counted here: **21 of 77 filed items are done**, and BL-008 through BL-021 — the game loop, the renderer, the sim harness, CI — are all still in Ready. Writing the banner from the item that filed the task would have replaced one false statement with a smaller one.
+
+4. **The repository's dependencies were not installed**, so the first `pnpm lint`/`typecheck`/`test` run failed with `ERR_MODULE_NOT_FOUND` rather than a test failure. Not a repository defect and not worth an item — but a session that read that output as a red baseline would have gone hunting. `pnpm install --frozen-lockfile` first, then measure.
+
+### Tests
+
+`tools/check-workflow-doc.ts` is the regression check `29` §9's bug-fix row asks for, and it was **confirmed red on the pre-fix tree** before the fix landed — six findings, matching the item's six problems exactly. It enforces two rules: one workflow document (by filename, in any extension, anywhere outside `node_modules` — not by content, because a copy that has drifted far enough to look like a different document is worse and a content comparison would grade the worst case as least suspicious), and every reference resolves. Wired as a second command under `pnpm lint:docs` rather than as a new `pnpm lint:*`, because a new script would have to be added to the verify blocks to be run at all, and "the script exists and nothing runs it" is **BL-077** — still open, and not worth becoming a second instance of.
+
+Suite unchanged at **353 pass / 0 fail across 90 suites**; no runtime code was touched. `lint`, `lint:rules`, `lint:docs`, `typecheck` and `build` all clean. **`pnpm format:check` is still red on BL-077's two files**, unchanged from the baseline measured before this task started, and deliberately not fixed here (`35` §3).
+
+### Follow-ups
+
+- None filed. BL-055 was **closed**, not filed; BL-021's description now names which of its four clauses this change completed and what is left of it.
+
+---
+
 ## 2026-09-07 — BL-072 The doc-command check reads `pnpm --filter`, and covers every `tasks/*.md`
 
 **Type:** feature
