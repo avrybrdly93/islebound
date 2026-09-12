@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-078**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-079**.
 
 **Task format:**
 
@@ -96,15 +96,6 @@ _Nothing in progress._
   - [x] Test-file scope stated explicitly — **tests are in scope**, and they are the whole reason the rule bites. No source file is over 500 (largest: `allocationHarness.ts` at 422), so a sources-only rule would have enforced the limit precisely where nobody was breaking it
 - **Notes:** Filed 2026-08-30 by BL-068. **Done 2026-09-01**, see `34_DEVELOPMENT_LOG.md` and decision **0029**. Three test files split at existing `describe` seams, each into a pair plus a small fixture module: `World.test.ts` 547 → 262 + 278 + 42, `EventBus.test.ts` 533 → 332 + 212 + 41, `Rng.test.ts` 509 → 204 + 235 + 113. **Suite count unchanged at 342 pass / 0 fail across 88 suites**, which is the check that matters for a move (BL-068's Surprise 3). **The rule was verified to fire rather than assumed to** — a 511-line probe reports the violation and was then removed; a rule that cannot fail is not a rule. The fixture modules reverse decision 0028's alternative (c) deliberately: 0028 preferred visible duplication for fixtures that were "three lines and stable", and `Rng`'s shared block is 113 lines of chi-square machinery whose critical values are stated rather than eyeballed. `Query.test.ts` is left at **499**, one under — the next case anybody adds now fails lint, which is the rule working, and the failure says what to do.
 
-### BL-074 — `allocation.test.ts` fails about one run in twenty, on whichever operation catches a stray sample
-- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs to read:** 29 · **Status:** IN PROGRESS (BL-074, this session)
-- **Description:** `packages/client/src/core/math/allocation.test.ts` asserts each operation's `attributedBytes <= allowance`, where the allowance is `controlBytes / 100` measured in the same process. Under full-suite load the sampling profiler occasionally attributes one sample to an allocation-free operation, and a single sample carries the whole sampling interval's weight — enough to clear an allowance derived from a control that read low in the same contended run. **Measured 2026-09-06 while landing BL-065, on the untouched tree as well as the changed one, which is what establishes it is not BL-065's:** 1 failure in 20 baseline full-suite runs (`clamp attributed 1344 bytes over 200000 calls, allowance 635.12`) and 1 in 6 on the changed tree (`stepSpring3 attributed 1040, allowance 718.08`). **A different operation each time**, which is the tell: nothing is wrong with `clamp` or `stepSpring3`, and running the file alone passes 8 of 8.
-- **Acceptance criteria:**
-  - [ ] The assertion distinguishes "this operation allocates per call" from "one stray sample landed in its frames" — 200,000 calls allocating one object each is ~10^7 bytes against the ~10^3 seen here, so there are four orders of magnitude to place a boundary in
-  - [ ] Whatever replaces it is verified able to **fail**, per BL-069's and BL-063's precedent: a deliberately allocating operation must still be caught
-  - [ ] The allowance's dependence on a control measured under the same contention is either removed or stated, since a low control is half of why the margin closes
-- **Notes:** Filed 2026-09-06 by BL-065, which measured it and deliberately did not fix it (`35` §3 — a type-only ECS change is not the place to redesign an allocation harness). **Do not fix this by raising the allowance blindly**: the harness's own comment argues the factor of 100 is "slack in the middle of a two-order-of-magnitude gap", and the failures show the gap is not two orders in the direction that matters — the stray-sample floor is ~10^3 bytes and the allowance lands near it whenever the control reads low. Raising the constant without saying what the new number is a hundredth *of* would repeat the mistake at a larger size. **Nor by deleting the control**: BL-050's first dead end was a harness whose signal was always zero, and the control is what rules that out.
-
 ### BL-077 — Two test files have never been formatted, and no gate would notice
 - **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
 - **Description:** `prettier --check .` fails on `packages/client/src/sim/ecs/Query.test.ts` and `packages/client/src/sim/ecs/Query.defTypes.test.ts`. **Measured 2026-09-07 by BL-072 on the untouched tree**, so it is not BL-072's: both were left unformatted by BL-065, whose log entry reports `lint`, `lint:rules`, `lint:docs` and `typecheck` clean and does not mention `format:check` — because **the verify block in `CLAUDE.md` and `AI_DEVELOPMENT_WORKFLOW.md` §6 does not contain it**. `pnpm format:check` exists as a script and nothing runs it.
@@ -112,6 +103,15 @@ _Nothing in progress._
   - [ ] `pnpm format:check` is clean on the whole tree
   - [ ] Something runs it that a session cannot forget — the verify block, or CI (BL-019), or both; a script nobody invokes is how this happened
 - **Notes:** The obvious worry is the 500-line limit, since `Query.test.ts` sits at 494 of 500 and `max-lines` is at `error`. **Checked before filing: formatting *shrinks* it to 491** and grows `Query.defTypes.test.ts` from 111 to 115, so there is no collision and the fix really is `pnpm format`. That check is the whole reason this is a filing rather than a one-line fix ridden along — had it gone the other way the item would have needed a seam, not a formatter. Note BL-019 (CI pipeline) may absorb the second criterion; whoever takes it first should say so.
+
+### BL-078 — The allocation boundary cannot see an operation that allocates rarely
+- **Phase:** 0 · **Size:** M · **Depends on:** BL-074 · **Docs to read:** 29
+- **Description:** BL-074 set the allowance at four sampling intervals, which separates "allocates once per call" from "one stray sample landed in these frames" — the discrimination its first criterion asked for. It does **not** separate "once per call" from "once per thousand calls". Measured 2026-09-12 with the same harness and default options: one allocation per 1000 calls attributes **4224–11 648 bytes**, whose bottom is a hair above the 4096 allowance, so such an operation is caught on most runs and not all; one per 10 000 calls attributes **0–3200** and is not caught at all. An operation allocating that rarely still violates `CLAUDE.md`'s no-allocation-in-per-frame-paths rule.
+- **Acceptance criteria:**
+  - [ ] A sparse allocator — one object per 1000 calls — is caught on every run of 20, not most
+  - [ ] Whatever achieves that does **not** reintroduce BL-074: a single stray sample must still not fail an operation whose true reading is zero
+  - [ ] The per-call control still passes its gap assertion, so the instrument is still known to resolve a real allocator
+- **Notes:** Filed 2026-09-12 by BL-074, which measured it and deliberately did not chase it (`35` §3 — the item was a boundary, not an instrument redesign). **Raising `MAX_STRAY_SAMPLES` moves the boundary the wrong way and lowering it re-creates BL-074**, so this is not a constant to retune; it needs a different instrument. The two obvious axes are a longer measured window and a finer `samplingInterval`, and **both have measured failure modes already recorded in `allocationHarness.ts`**: at interval 16 an allocation-free operation read 904 bytes where 64–8192 all read exactly 0, and a warm-up of 200000 made the *control* read 0 in one pass of three. Read that options table before picking either. Note also that the gap assertion caps the allowance from above: on the reference container the control backs at most **6** intervals, measured, so there is no room to widen the boundary toward the sparse case even if that seemed attractive.
 
 ### BL-008 — Fixed-timestep game loop
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-059 · **Docs:** 04, 09
@@ -301,15 +301,6 @@ _Nothing in progress._
 
 ---
 
-### BL-057 — The allocation allowance can fall below one profiler sample
-- **Phase:** 0 · **Size:** S · **Depends on:** BL-050 · **Docs to read:** 29
-- **Description:** `allocationAllowanceFromControl` returns `control / 100`, and `measureAttributedAllocation` samples every 1024 bytes by default. On this machine the control reads **77k–94k** across runs, so the allowance lands at **773–944 bytes — below one sampling interval**. A single stray sample attributed to the measured frames is 1024 bytes and fails an assertion whose true reading is exactly 0.
-- **Acceptance criteria:**
-  - [ ] The zero-allocation assertions cannot be failed by one stray sample, without raising the threshold above one object's worth of allocation
-  - [ ] Whatever is chosen is derived from the sampling interval rather than tuned, and the reasoning is in `allocationHarness.ts`
-  - [ ] `core/math/allocation.test.ts` gets the same treatment as `core/EventBus.test.ts`
-- **Notes:** Filed 2026-08-16 by BL-006, from a real failure: `EventBus.test.ts`'s first run failed its zero-subscriber-emit assertion once, then passed 13 consecutive runs, which is what prompted measuring the control. **Not hypothetical for the existing suite either** — `allocation.test.ts` derives its allowance the same way and BL-050 recorded a reference-machine control of ~115000 (allowance 1150, only just above one sample). BL-006 mitigated its own three cases with `repeats: 6`, since `attributedBytes` is the minimum across passes and a stray must then recur in all six; that is a local patch, not the fix. The guard `controlBytes >= 10_000` does not catch this, because the instrument is working correctly — it is the *allowance arithmetic* that is unaware of the sample granularity.
-
 ## Ready — Phase 1: Player & World (seeded; groom before starting)
 
 ### BL-022 — Control map authoring and loader
@@ -420,6 +411,22 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-074 — `allocation.test.ts` fails about one run in twenty, on whichever operation catches a stray sample
+- **Completed:** 2026-09-12 · **PR:** — (pushed direct to `main`)
+- `core/math/allocationHarness.ts`, `core/math/allocation.test.ts`, `core/EventBus.queued.test.ts`. Decision **0034**. Suite **353 → 356 pass / 0 fail across 90 suites**, green on **3 consecutive full runs**. `lint`, `lint:rules`, `lint:docs`, `typecheck` all clean. **`format:check` is still red on BL-077's two files**, unchanged and not this task's.
+- **All three criteria met, and BL-057 is closed by the same change** — it is the same defect, filed 2026-08-16 with this exact arithmetic, and its third criterion ("`core/math/allocation.test.ts` gets the same treatment as `core/EventBus.test.ts`") is why both consumers changed. Moved here beside this entry, following BL-073/BL-055's precedent.
+- **The root cause is sharper than the filing.** The backlog said the allowance "lands near" the stray-sample floor when the control reads low; measured, **it lands below it, always**. `controlBytes / 100` clears the 1024-byte sampling interval only above a control of 102 400, and the control reads **54 912–67 584 idle** / **77 280–101 952 under four allocating hog threads** — allowances of 549–1020, i.e. **0.54–1.00 samples**. BL-065's two failures were one sample each and were always going to fail.
+- **Criterion 1** is answered by changing the *unit*: `strayAllocationAllowance()` is four sampling intervals, 3× above the worst stray ever observed and 13× below the weakest control, with every allocation-free operation reading **exactly 0** across 130 measurements in both conditions.
+- **Criterion 3** is answered on its *removed* branch. The control did not go away — BL-050's dead end forbids that — it moved from **setting** the boundary to **asserting the gap** around it, at 8×. That is what makes "do not raise the allowance blindly" enforceable: measured, `MAX_STRAY_SAMPLES` of 6 is green and 8 is red, so the boundary cannot be widened toward the control without the run going red. The old derived allowance could never fail that way by construction.
+- **Criterion 2 is a permanent test, not a perturbation**, per BL-069's and BL-063's precedent: a deliberate per-call allocator runs through `assertNoAllocation` itself and is asserted to be rejected, and the two readings that actually failed (1344, 1040) are pinned as numbers.
+- **`EventBus.queued.test.ts` lost its `repeats: 6`.** It was a mitigation for this defect — its own comment said so and BL-057's notes called it "a local patch, not the fix" — and leaving it would have meant that file kept passing for the old reason and never exercised the change.
+- **Six controls, tree restored and green after each:** allowance ×50 → the gap guard fires (raising it blindly does *not* go green); allowance 0 → 4 failures, the defect recreated; `samplingInterval` 65536 → guard fires; stale `MEASURED_LOOP_NAME` → guard fires; the assertion made unconditionally true → the able-to-fail case fails and nothing else; 6 green / 8 red as above.
+- **Discovered work: BL-078**, the sparse-allocator blind spot, measured (4224–11 648 for one allocation per 1000 calls) and deliberately not chased.
+
+### BL-057 — The allocation allowance can fall below one profiler sample
+- **Completed:** 2026-09-12 · **PR:** — (pushed direct to `main`), closed by BL-074
+- The same defect as BL-074, filed four weeks earlier from a real `EventBus.test.ts` failure and re-measured independently on 2026-09-12. All three criteria met by BL-074's change; see that entry and decision **0034**. **Worth recording that it was filed twice**: BL-006 measured the arithmetic in August and mitigated its own three cases with `repeats: 6`, and BL-065 measured the failures in September without connecting them to the open item — so the tree carried a correct diagnosis and a local workaround for four weeks while a second filing described the symptom.
 
 ### BL-073 — Two statements in `README.md` are now false
 - **Completed:** 2026-09-08 · **PR:** — (pushed direct to `main`)

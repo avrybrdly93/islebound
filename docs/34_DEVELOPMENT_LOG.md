@@ -34,6 +34,50 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-12 — BL-074 An allocation allowance measured in samples, and the same defect found twice
+
+**Type:** fix
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~1 session
+
+### What changed
+`allocationAllowanceFromControl` (`controlBytes / 100`) is gone, replaced by `strayAllocationAllowance()` — four sampling intervals, independent of the control. The control is still measured in the same process and still gates the run; `assertInstrumentResolvesControl` makes it assert the **gap** (control ≥ 8 × allowance) instead of setting the boundary. Both consumers changed: `core/math/allocation.test.ts` and `core/EventBus.queued.test.ts`, the latter losing the `repeats: 6` mitigation it carried for this exact defect. Decision **0034**. Suite **353 → 356 pass / 0 fail across 90 suites**, green on three consecutive full runs.
+
+### Why it was done this way
+The item's own instruction was "do not fix this by raising the allowance blindly" and "nor by deleting the control", which leaves changing the **unit**. A sampled allocation cannot weigh less than one `samplingInterval`, so 1024 bytes is the smallest non-zero figure the instrument can produce; a hundredth of the control clears that only above a control of 102 400, and the control reads 54 912–101 952 here. So the old allowance tolerated less than one sample and the only question was how often one strayed.
+
+Expressing the allowance in intervals makes the boundary a statement about the instrument rather than about whatever the control happened to read in a contended process — BL-057's second criterion in one line ("derived from the sampling interval rather than tuned"). The control keeps the job BL-050 proved it needs: a constant threshold cannot tell "this operation allocates nothing" from "the profiler recorded nothing", and the control is the only thing that rules that out.
+
+The gap assertion is the part worth copying. It makes the item's own prohibition **enforceable rather than advisory**: measured, `MAX_STRAY_SAMPLES` of 6 is green and 8 is red, so on this container the allowance cannot be widened toward the control without the run going red. The old derived allowance could not fail that way by construction — a hundredth of the control is a hundredth of it however small it gets — which is exactly why "raise the constant" looked reasonable and was not.
+
+### Surprises
+
+1. **The defect was already filed, diagnosed correctly, and worked around — four weeks earlier.** `BL-057` (2026-08-16) states this arithmetic exactly: "the allowance lands at 773–944 bytes — below one sampling interval". `EventBus.queued.test.ts` carries a twenty-line comment explaining it and a `repeats: 6` mitigation. BL-074 was filed on 2026-09-06 by a session that measured the *symptom* in `allocation.test.ts` and did not connect it to the open item. So the tree held a correct diagnosis, a local patch, and a second filing of the same bug, simultaneously, and the way to find that was `grep` for the function name rather than reading the backlog entry. **A filing that names the symptom and a filing that names the cause do not look like each other in a backlog index.** Both are now closed; BL-057's criteria are what this change was actually graded against, because they are the sharper ones.
+
+2. **The backlog's own description understates it, and the direction matters.** It says the allowance "lands near" the stray floor "whenever the control reads low". Measured on every reading taken this session — idle and under four allocating hog threads — it lands **below** it, always, by 0.0 to 0.46 of a sample. There is no "whenever": the old rule tolerated zero strays on this machine in every condition. The docs' "reference machine" at ~115 000 is the only regime where it had any tolerance, and it had 12%.
+
+3. **The harness's own comment was wrong in a way that reads as reassuring.** "A factor of 100 is not a tuned threshold sitting between two close numbers — it is slack in the middle of a two-order-of-magnitude gap." The gap is real; the allowance was not in the middle of it, it was below the bottom. A comment asserting a margin is exactly as good as the measurement behind it, and this one had none.
+
+4. **Worker-thread contention does not reproduce the flake, and that is informative.** Four hog threads allocating continuously produced **80 of 80 readings of exactly 0** for allocation-free operations — because the sampling heap profiler attributes by stack within an isolate, and a worker's allocations are in a different isolate and cannot reach this profile. The real strays come from same-isolate events (tier-up, deopt) under CPU pressure. The probe was kept anyway: it is what establishes that the control *rises* under contention (77 280–101 952 against 54 912–67 584 idle), which is the half of the story that makes the old allowance worse exactly when the machine is busy.
+
+5. **`allocationHarness.ts` is now 496 of its 500 allowed lines.** Three rounds of trimming went into fitting the reasoning in, and the measured tables ended up in decision 0034 partly for that reason. Decision 0029's prediction — "the next case anybody adds now fails lint" — applies to this file now.
+
+### Tests
+Three cases added to `allocation.test.ts`, one replaced.
+
+- **`still catches a deliberate per-call allocator through the same assertion path`** — criterion 2 as a permanent test rather than a one-off manual perturbation, the standard BL-069 and BL-063 were held to. It runs the control's allocator through `assertNoAllocation` itself and asserts it is rejected.
+- **`tolerates the exact strays that failed before, and still rejects an object per call`** — the regression half, pinned as numbers: 1024, 1040, 1344 and 2048 must pass, and the two old allowances (635.12, 718.08) are recorded as having been below one interval so nobody re-derives the old rule.
+- **`the allowance is derived from the sampling interval and not from the control`** — BL-057's second criterion in three assertions: doubling the interval doubles it, the control does not enter, and it clears one whole sample.
+- **`refuses to derive an allowance from a control that read low`** became **`refuses to proceed from a control that read low`**, now exercising the gap ratio rather than the old 10 000 floor.
+
+Six controls, tree restored and re-run green after each: allowance ×50 → the gap guard fires; allowance 0 → 4 failures, the defect recreated; `samplingInterval` 65536 → guard fires; stale `MEASURED_LOOP_NAME` → guard fires; the assertion made unconditionally true → the able-to-fail case fails **and nothing else**; `MAX_STRAY_SAMPLES` 6 green / 8 red.
+
+### Follow-ups
+- **BL-078** — the boundary separates "per call" from "one stray sample" but not from "once per thousand calls" (measured 4224–11 648 for the latter). Filed with the two obvious instrument axes and the measured failure mode of each, so nobody retunes the constant instead.
+
+---
+
 ## 2026-09-08 — BL-073 One workflow document, and a status banner that is true
 
 **Type:** fix

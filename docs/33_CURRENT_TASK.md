@@ -4,86 +4,104 @@
 
 ---
 
-## Status: IN_PROGRESS — BL-074
+## Status: IDLE
 
-`allocation.test.ts` fails about one run in twenty, on whichever operation
-catches a stray sample. Taken as the topmost unblocked Phase 0 task, per
-`AI_DEVELOPMENT_WORKFLOW.md` §2, and exactly as the previous handoff predicted
-it would be: BL-056 is Phase 1, BL-067 skips on its own instruction, BL-074 is
-next.
+No task in progress. **BL-074 is complete** (2026-09-12), and **BL-057 closed
+with it** — they are the same defect, filed four weeks apart by two sessions
+that each measured it independently. The allocation allowance is now four
+sampling intervals rather than `controlBytes / 100`, the control asserts the
+*gap* around it instead of setting it, and `EventBus.queued.test.ts` has lost
+the `repeats: 6` mitigation it carried for the same problem. Decision **0034**
+carries the argument. See `34_DEVELOPMENT_LOG.md` 2026-09-12 — its
+**Surprises** 1 and 4 are the ones worth reading.
 
-Baseline on the untouched tree, after `pnpm install --frozen-lockfile`:
-**353 pass / 0 fail across 90 suites**, `lint` and `typecheck` clean. The
-allocation flake did **not** fire in the baseline run, which is consistent with
-1 in 20 and is not evidence it is gone.
+Suite **353 → 356 pass / 0 fail across 90 suites**, green on **three
+consecutive full runs**. `lint`, `lint:rules`, `lint:docs` and `typecheck` all
+clean.
 
-## The root cause, measured before any code was written
+## Next action for an agent
 
-The backlog says "the allowance lands near [the stray-sample floor] whenever
-the control reads low". **That is too kind. On this machine it lands below it,
-always.**
+The topmost unblocked task in Phase 0's Ready list, per
+`AI_DEVELOPMENT_WORKFLOW.md` §2.
 
-`allocationAllowanceFromControl` returns `controlBytes / 100`, and the
-profiler's `samplingInterval` is **1024 bytes**. A stray sample cannot weigh
-less than one interval. So the allowance is a tolerance of **less than one
-sample** whenever the control reads under 102 400 — and every control reading
-taken this session is under it:
+**Read the file, do not trust this line.** In list order:
 
-| condition | control | allowance = control/100 | samples tolerated |
-|---|---|---|---|
-| idle, 10 rounds | 54 912 – 67 584 | 549 – 676 | **0.54 – 0.66** |
-| 4 allocating hog threads, 8 rounds | 77 280 – 101 952 | 773 – 1020 | **0.75 – 1.00** |
+- **BL-056** is still **Phase 1** — not a candidate under phase discipline.
+  Eighteenth session running.
+- **BL-067** is still the one to skip, **on its own instruction** rather than
+  on your judgement: `23_SAVE_SYSTEM.md` mentions `EntitySave` exactly once
+  (§2) and defines it nowhere, so there is still no component-level format for
+  its first criterion to presume. Re-checked 2026-09-12.
+- **BL-077** is now the topmost that is actually ready, BL-074 having closed.
 
-BL-065's two observed failures were `clamp` at **1344** against an allowance of
-**635**, and `stepSpring3` at **1040** against **718** — both are one sample,
-and both were always going to fail. The harness's own comment calls the factor
-of 100 "slack in the middle of a two-order-of-magnitude gap"; there is no slack
-at all, because the allowance sits **under the quantum the instrument can even
-report**. That is why it is machine- and load-dependent rather than constant:
-the docs' reference machine read ~115 000, which is the only regime where
-`control/100` clears one sample, and it clears it by 12%.
+Then **BL-078** (new this session), then **BL-008**.
 
-## What the same measurements say the boundary should be
+## Before you trust anything below, install
 
-Idle, 10 rounds, default options — every allocation-free operation read
-**exactly 0**, 50 of 50; under 4 hog threads, **80 of 80**. The separation is
-not marginal, and the right unit for a tolerance is the **sample**, not the
-byte:
+`pnpm install --frozen-lockfile` first. This container arrived with
+`node_modules` absent again, and the first `pnpm lint && pnpm typecheck &&
+pnpm test` without it fails with `ERR_MODULE_NOT_FOUND` — which reads exactly
+like a broken tree and is not one. After installing, the baseline was 353/353
+across 90 suites, matching the previous session's close-out on every count.
 
-| case | attributed | in samples |
-|---|---|---|
-| allocation-free (130 readings) | 0 | 0 |
-| worst stray ever observed (BL-065, real full-suite load) | 1344 | 1.3 |
-| 1 allocation per 10 000 calls | 0 – 3200 | 0 – 3.1 |
-| 1 allocation per 1000 calls | 4224 – 11 648 | 4.1 – 11.4 |
-| **per call** (the control) | 54 912 – 101 952 | **53.6 – 99.6** |
+## The red run you no longer need to worry about, and the one you still do
 
-## Plan
+1. **The `allocation.test.ts` 1-in-20 is fixed, not mitigated.** It failed
+   because `controlBytes / 100` was **less than one sampling interval** — 549
+   to 1020 bytes against a 1024-byte quantum — so a single stray sample always
+   cleared it. The allowance is now 4096. Three consecutive full runs are
+   green, which is not proof at a 1-in-20 base rate, but the arithmetic is:
+   a stray of one sample is 1024 and the bound is four of them. **If it does go
+   red again, the number in the message is the thing to read** — under 4096 is
+   a new phenomenon, well over it is a real allocation.
+2. **`pnpm format:check` is still red on `main`**, on two files nobody has
+   formatted (`Query.test.ts`, `Query.defTypes.test.ts`). That is **BL-077**,
+   untouched by this task and now the topmost ready item. The reason it goes
+   unnoticed is still the useful part: **the verify block does not contain
+   `format:check`**, so a session can report "all clean" truthfully while it
+   fails. `pnpm format` is safe on both (re-checked: it *shrinks*
+   `Query.test.ts`, so the 500-line limit is not in play).
 
-1. Replace `allocationAllowanceFromControl` with an allowance expressed in
-   **sampling intervals** and independent of the control's magnitude —
-   criterion 3's "removed" branch rather than its "stated" branch.
-2. Keep the control, and keep it gating the run. BL-050's first dead end was a
-   harness whose signal was always zero, and the control is what rules that
-   out. It moves from *deriving* the allowance to *asserting the gap*: the
-   instrument must resolve a per-call allocator to many times the allowance,
-   checked in the same process.
-3. Make "verified able to fail" a **permanent test** rather than a one-off
-   manual perturbation, per BL-069's and BL-063's precedent: run the
-   deliberate allocator through the same assertion path the operations use and
-   assert it is rejected.
-4. Write the limit down. A boundary that separates "per call" from "one stray
-   sample" does **not** separate "per call" from "once per thousand calls" —
-   4224 is too close to a few stray samples to discriminate. That is an honest
-   caveat and belongs in the module beside the escape-analysis one, not in a
-   commit message.
-5. Docs: `32` (close), `33` (this file → IDLE), `34` (entry + Surprises), `40`
-   (the decision, since it changes what an acceptance criterion is graded by).
+## If you take BL-077, two things this session learned that bear on it
 
-## Still true, carried forward from the previous handoff
+- Its second criterion — "something runs it that a session cannot forget" — is
+  the half that matters, and **`pnpm lint:docs` is the precedent to copy**:
+  decision 0033 wired a new check as a second command under an existing script
+  precisely because a new `pnpm lint:*` would need adding to the verify blocks
+  to be run at all, which is how BL-077 happened in the first place.
+- Say whether BL-019 (CI) absorbs it, as its own notes ask.
 
-- **`pnpm format:check` is red on `main`** on `Query.test.ts` and
-  `Query.defTypes.test.ts` — that is **BL-077**, untouched by this task, and it
-  goes unnoticed because the verify block does not contain `format:check`.
-- **BL-056** is Phase 1; **BL-067** skips on its own instruction
-  (`23_SAVE_SYSTEM.md` mentions `EntitySave` once and defines it nowhere).
+## If you take BL-078, read the harness's options table before choosing an axis
+
+BL-078 is the blind spot BL-074 deliberately left: the boundary separates
+"allocates once per call" from "one stray sample" but **not** from "allocates
+once per thousand calls", which reads 4224–11 648 against a 4096 bound.
+
+The trap is that it looks like a constant to retune and is not. **Raising
+`MAX_STRAY_SAMPLES` moves the boundary the wrong way, and lowering it
+re-creates BL-074.** It needs a different instrument, and the two obvious axes
+— a longer window and a finer `samplingInterval` — both have measured failure
+modes already recorded in `allocationHarness.ts`: at interval 16 an
+allocation-free operation read 904 bytes where 64–8192 all read exactly 0, and
+a warm-up of 200 000 made the **control** read 0 in one pass of three. There is
+also no room above: the gap assertion caps the allowance at **6** intervals on
+this container, measured, so the boundary cannot simply be moved up.
+
+## Two things carried forward that a later session should not rediscover
+
+1. **A filing that names a symptom and a filing that names a cause do not look
+   alike in a backlog index.** BL-074 (the symptom: a 1-in-20 flake) and
+   BL-057 (the cause: the allowance is below one sample) sat open together for
+   a month, and `EventBus.queued.test.ts` carried a twenty-line comment
+   diagnosing it and a local workaround the whole time. What found it was
+   `grep` for the function name, not reading the backlog. **Before starting a
+   fix, grep for the thing you are about to change** — the tree may already
+   know.
+2. **Worker threads do not reproduce profiler contention.** Four hog threads
+   allocating continuously produced 80 of 80 readings of exactly 0 for
+   allocation-free operations, because the sampling heap profiler attributes by
+   stack *within an isolate* and a worker is a different isolate. If you need
+   to reproduce a stray sample, same-isolate pressure (tier-up, deopt) is the
+   mechanism; CPU competition from another process is not. The probe is still
+   worth running for the other half of the picture: the **control** does rise
+   under contention, 77 280–101 952 against 54 912–67 584 idle.
