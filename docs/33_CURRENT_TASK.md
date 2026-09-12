@@ -4,178 +4,86 @@
 
 ---
 
-## Status: IDLE
+## Status: IN_PROGRESS — BL-074
 
-No task in progress. **BL-073 is complete** (2026-09-08), and **BL-055 closed
-with it** — it was criterion 2 stated separately. `.github/AI_DEVELOPMENT_WORKFLOW`
-is gone, `docs/AI_DEVELOPMENT_WORKFLOW.md` is the one workflow document, all
-five references resolve, `README.md`'s banner says what this tree measures, and
-`tools/check-workflow-doc.ts` (run by `pnpm lint:docs`) is what stops the next
-copy. Decision **0033** carries the argument. See `34_DEVELOPMENT_LOG.md`
-2026-09-08 — its **Surprises** 1, 2 and 3 are the ones worth reading.
+`allocation.test.ts` fails about one run in twenty, on whichever operation
+catches a stray sample. Taken as the topmost unblocked Phase 0 task, per
+`AI_DEVELOPMENT_WORKFLOW.md` §2, and exactly as the previous handoff predicted
+it would be: BL-056 is Phase 1, BL-067 skips on its own instruction, BL-074 is
+next.
 
-Suite unchanged at **353 pass / 0 fail across 90 suites** (no runtime code
-changed). `lint`, `lint:rules`, `lint:docs`, `typecheck` and `build` all clean.
+Baseline on the untouched tree, after `pnpm install --frozen-lockfile`:
+**353 pass / 0 fail across 90 suites**, `lint` and `typecheck` clean. The
+allocation flake did **not** fire in the baseline run, which is consistent with
+1 in 20 and is not evidence it is gone.
 
-## Next action for an agent
+## The root cause, measured before any code was written
 
-The topmost unblocked task in Phase 0's Ready list, per
-`AI_DEVELOPMENT_WORKFLOW.md` §2.
+The backlog says "the allowance lands near [the stray-sample floor] whenever
+the control reads low". **That is too kind. On this machine it lands below it,
+always.**
 
-**Read the file, do not trust this line.** In list order:
+`allocationAllowanceFromControl` returns `controlBytes / 100`, and the
+profiler's `samplingInterval` is **1024 bytes**. A stray sample cannot weigh
+less than one interval. So the allowance is a tolerance of **less than one
+sample** whenever the control reads under 102 400 — and every control reading
+taken this session is under it:
 
-- **BL-056** is still **Phase 1** — not a candidate under phase discipline.
-  Seventeenth session running.
-- **BL-067** is still the one to skip, **on its own instruction** rather than
-  on your judgement: `23_SAVE_SYSTEM.md` mentions `EntitySave` exactly once
-  (§2) and defines it nowhere, so there is still no component-level format for
-  its first criterion to presume. Re-checked 2026-09-08.
-- **BL-074** is now the topmost that is actually ready.
+| condition | control | allowance = control/100 | samples tolerated |
+|---|---|---|---|
+| idle, 10 rounds | 54 912 – 67 584 | 549 – 676 | **0.54 – 0.66** |
+| 4 allocating hog threads, 8 rounds | 77 280 – 101 952 | 773 – 1020 | **0.75 – 1.00** |
 
-Then **BL-077**, then **BL-008**.
+BL-065's two observed failures were `clamp` at **1344** against an allowance of
+**635**, and `stepSpring3` at **1040** against **718** — both are one sample,
+and both were always going to fail. The harness's own comment calls the factor
+of 100 "slack in the middle of a two-order-of-magnitude gap"; there is no slack
+at all, because the allowance sits **under the quantum the instrument can even
+report**. That is why it is machine- and load-dependent rather than constant:
+the docs' reference machine read ~115 000, which is the only regime where
+`control/100` clears one sample, and it clears it by 12%.
 
-## Before you trust anything below, install
+## What the same measurements say the boundary should be
 
-`pnpm install --frozen-lockfile` first. This session's container arrived with
-no `node_modules`, so the first `pnpm lint && pnpm typecheck && pnpm test`
-failed with `ERR_MODULE_NOT_FOUND` — which reads exactly like a broken tree and
-is not one. After installing, the baseline is 353/353 across 90 suites.
+Idle, 10 rounds, default options — every allocation-free operation read
+**exactly 0**, 50 of 50; under 4 hog threads, **80 of 80**. The separation is
+not marginal, and the right unit for a tolerance is the **sample**, not the
+byte:
 
-## Two things to know before you trust a red run
+| case | attributed | in samples |
+|---|---|---|
+| allocation-free (130 readings) | 0 | 0 |
+| worst stray ever observed (BL-065, real full-suite load) | 1344 | 1.3 |
+| 1 allocation per 10 000 calls | 0 – 3200 | 0 – 3.1 |
+| 1 allocation per 1000 calls | 4224 – 11 648 | 4.1 – 11.4 |
+| **per call** (the control) | 54 912 – 101 952 | **53.6 – 99.6** |
 
-Both carried forward unchanged; both were re-confirmed on this session's
-untouched tree.
+## Plan
 
-1. **BL-074 makes about one full-suite run in twenty fail on
-   `allocation.test.ts`, and it will not be the same operation twice.** It is
-   pre-existing (1 in 20 baseline, on `clamp`; the file passes 8 of 8 in
-   isolation). If your run goes red there and your change did not touch
-   `core/math/`, re-run before you go looking — and if you do go looking, the
-   filing is where to start, not the harness. **It did not fire in either of
-   this session's two full-suite runs**, which is consistent with 1 in 20 and
-   is not evidence it is gone.
-2. **`pnpm format:check` is red on `main`, on two files nobody has formatted**
-   (`Query.test.ts`, `Query.defTypes.test.ts`). That is **BL-077**,
-   re-measured on this session's untouched tree and unchanged by this task.
-   The reason it goes unnoticed is the useful part: **the verify block does not
-   contain `format:check`**, so a session can report "all clean" truthfully
-   while it fails. `pnpm format` is safe on them (checked: it *shrinks*
-   `Query.test.ts` from 494 to 491, so the 500-line limit is not in play).
+1. Replace `allocationAllowanceFromControl` with an allowance expressed in
+   **sampling intervals** and independent of the control's magnitude —
+   criterion 3's "removed" branch rather than its "stated" branch.
+2. Keep the control, and keep it gating the run. BL-050's first dead end was a
+   harness whose signal was always zero, and the control is what rules that
+   out. It moves from *deriving* the allowance to *asserting the gap*: the
+   instrument must resolve a per-call allocator to many times the allowance,
+   checked in the same process.
+3. Make "verified able to fail" a **permanent test** rather than a one-off
+   manual perturbation, per BL-069's and BL-063's precedent: run the
+   deliberate allocator through the same assertion path the operations use and
+   assert it is rejected.
+4. Write the limit down. A boundary that separates "per call" from "one stray
+   sample" does **not** separate "per call" from "once per thousand calls" —
+   4224 is too close to a few stray samples to discriminate. That is an honest
+   caveat and belongs in the module beside the escape-analysis one, not in a
+   commit message.
+5. Docs: `32` (close), `33` (this file → IDLE), `34` (entry + Surprises), `40`
+   (the decision, since it changes what an acceptance criterion is graded by).
 
-## Why BL-074 is a reasonable next task, and the trap in it
+## Still true, carried forward from the previous handoff
 
-Its three criteria are unusually prescriptive, and the notes forbid the two
-shortcuts explicitly: **do not raise the allowance blindly** (the harness's own
-comment calls the factor of 100 "slack in the middle of a two-order-of-magnitude
-gap", and the failures show the gap is not two orders in the direction that
-matters — the stray-sample floor is ~10³ bytes and the allowance lands near it
-whenever the control reads low), and **do not delete the control** (BL-050's
-first dead end was a harness whose signal was always zero). Criterion 2 wants
-the replacement **verified able to fail** — a deliberately allocating operation
-must still be caught — which is the same standard BL-069, BL-063 and this
-session's check were held to.
-
-## If you take BL-077 instead, read its second criterion first
-
-It has two halves and the second is the one that matters: something must run
-`format:check` that a session cannot forget. Note **BL-019** (CI pipeline) may
-absorb it, and note what this session did with the same problem one level down
-— `check-workflow-doc.ts` was wired as a second command under the existing
-`lint:docs` **specifically to avoid** creating another script nothing runs.
-Adding `format:check` to the verify blocks in `CLAUDE.md` and
-`AI_DEVELOPMENT_WORKFLOW.md` §6 is the direct fix and touches two documents.
-
-## The standing question, unchanged
-
-**Two** `S` items now sit ahead of **BL-008**, the `M` the phase is actually
-for — down from six, two of them closed this session. That is progress against
-the question rather than an answer to it: whether BL-008 should be pinned ahead
-of the `S` queue is still a human's call.
-
----
-
-## Previous session (2026-09-07) — kept for its warnings
-
-### Status at that point: IDLE
-
-No task in progress. **BL-072 is complete** (2026-09-07) —
-`tools/check-doc-commands.ts` now covers **eleven** documents (the three
-agent-facing ones plus **every** `tasks/*.md`) and reads
-`pnpm --filter <selector> <script>`, resolving the selector against the
-workspace members and checking the script against *that package's* manifest.
-Decision **0032** carries the argument. See `34_DEVELOPMENT_LOG.md`
-2026-09-07 — its **Surprises** 1 and 4 are the ones worth reading.
-
-Suite unchanged at **353 pass / 0 fail across 90 suites** (no runtime code
-changed). `lint`, `lint:rules`, `lint:docs`, `typecheck` all clean.
-
-## Next action for an agent
-
-The topmost unblocked task in Phase 0's Ready list, per
-`AI_DEVELOPMENT_WORKFLOW.md` §2.
-
-**Read the file, do not trust this line.** In list order:
-
-- **BL-056** is still **Phase 1** — not a candidate under phase discipline.
-  Sixteenth session running.
-- **BL-067** is still the one to skip, **on its own instruction** rather than
-  on your judgement. Re-checked this session with the grep the previous handoff
-  names: `23_SAVE_SYSTEM.md` mentions `EntitySave` exactly once (§2, line 38)
-  and defines it nowhere, so there is still no *component-level* format, which
-  is what BL-067's first criterion presumes.
-- **BL-073** is now the topmost that is actually ready.
-
-Then **BL-074**, **BL-077** (filed this session), then **BL-008**.
-
-## Why BL-073 is a reasonable next task, and the trap in it
-
-BL-073 is two false statements in `README.md`: the status banner still says
-**"pre-implementation … code begins at `docs/32_BACKLOG.md` → BL-001"** when
-BL-001 through BL-072 have landed, and it points agents at
-**`.github/AI_DEVELOPMENT_WORKFLOW.md`**, which does not exist — the file at
-that path is `.github/AI_DEVELOPMENT_WORKFLOW`, with no extension, a shorter
-copy of `docs/AI_DEVELOPMENT_WORKFLOW.md`.
-
-Three things to know before starting:
-
-1. **The duplicate is the dangerous half, and this session made it slightly
-   worse.** `tools/check-doc-commands.ts` covers `docs/AI_DEVELOPMENT_WORKFLOW.md`
-   and not the `.github/` copy, so the copy can rot silently while the check
-   reports clean — and the check's coverage list just grew by six files without
-   the copy among them. Criterion 2 ("exactly one workflow document, and every
-   reference to it resolves") is the fix; deleting the copy or making it a
-   pointer both satisfy it, and the copy being invisible to `lint:docs` is the
-   argument for not leaving it as a copy.
-2. **It overlaps BL-021 and BL-055**, both unstarted. BL-021 owns `README.md`,
-   `CLAUDE.md` and this exact path reference; BL-055 is the path reference
-   alone. Whoever takes any one of the three should absorb the others rather
-   than leave two items pointing at a fixed problem.
-3. **Five documents point at the missing path**: `README.md`, `CLAUDE.md`,
-   `docs/32_BACKLOG.md`, `docs/34_DEVELOPMENT_LOG.md`, `docs/35_AI_AGENT_RULES.md`.
-   Fixing one is not the criterion.
-
-## The standing question, unchanged and now larger
-
-**Six** `S` items now sit ahead of **BL-008**, the `M` the phase is actually
-for — BL-073, BL-074 and BL-077 among them, and BL-077 was filed this session
-against code this session did not write, exactly as BL-074 was filed last
-session. That is the backlog working as intended, but a phase that only ever
-services its own discoveries does not reach its exit criteria. Worth a human
-deciding whether BL-008 should be pinned ahead of the `S` queue.
-
-## Two things to know before you trust a red run
-
-1. **BL-074 makes about one full-suite run in twenty fail on
-   `allocation.test.ts`, and it will not be the same operation twice.** It is
-   pre-existing and was measured on the untouched tree (1 in 20 baseline, on
-   `clamp`; the file passes 8 of 8 in isolation). If your run goes red there and
-   your change did not touch `core/math/`, re-run before you go looking — and if
-   you do go looking, the filing is where to start, not the harness.
-2. **`pnpm format:check` is red on `main` right now, on two files nobody has
-   formatted** (`Query.test.ts`, `Query.defTypes.test.ts`). That is **BL-077**,
-   measured this session on the untouched tree. The reason it went unnoticed is
-   the useful part: **the verify block does not contain `format:check`**, so
-   every recent session reported "all clean" truthfully while it was failing.
-   If you run it and it is red on exactly those two files, that is the known
-   state — and `pnpm format` is safe to run on them (checked: it *shrinks*
-   `Query.test.ts` from 494 to 491, so the 500-line hard limit is not in play).
+- **`pnpm format:check` is red on `main`** on `Query.test.ts` and
+  `Query.defTypes.test.ts` — that is **BL-077**, untouched by this task, and it
+  goes unnoticed because the verify block does not contain `format:check`.
+- **BL-056** is Phase 1; **BL-067** skips on its own instruction
+  (`23_SAVE_SYSTEM.md` mentions `EntitySave` once and defines it nowhere).
