@@ -4,10 +4,11 @@ import { before, describe, it } from 'node:test';
 import { EventBus } from '@core/EventBus';
 import { noop, type TestEvents } from '@core/EventBus.testFixtures';
 import {
-  allocationAllowanceFromControl,
+  assertInstrumentResolvesControl,
   keepAlive,
   measureAttributedAllocation,
   readRing,
+  strayAllocationAllowance,
 } from '@core/math/allocationHarness';
 
 /**
@@ -125,40 +126,40 @@ describe('EventBus: queued mode (04 §4.4)', () => {
 
 describe('EventBus: no allocation per emit for zero-subscriber events (criterion 2)', () => {
   /**
-   * Derived from a control measured in this same process, exactly as
-   * `core/math/allocation.test.ts` does. A constant threshold cannot tell
-   * "this path allocates nothing" from "the profiler recorded nothing", and
-   * the latter passes everything — see BL-050.
+   * Four sampling intervals, **independent of the control**, exactly as
+   * `core/math/allocation.test.ts` now is — BL-057's third criterion is that
+   * the two files get the same treatment, and BL-074 is what delivered it.
+   *
+   * The control has not gone away and must not: a constant threshold cannot
+   * tell "this path allocates nothing" from "the profiler recorded nothing",
+   * and the latter passes everything (BL-050). It moved from *setting* this
+   * number to *asserting the gap* around it, in `before` below.
    */
-  let allowance = Number.NaN;
+  const allowance = strayAllocationAllowance();
 
   /**
-   * Passed to every measurement below, and the reason is measured rather than
-   * defensive.
+   * **`repeats: 6` used to be here and has been removed (BL-057, BL-074).**
    *
-   * `allocationAllowanceFromControl` returns `control / 100`, and on this
-   * machine the control reads **77k–94k** across runs, so the allowance lands
-   * at **773–944 bytes — below the profiler's 1024-byte sampling interval**.
-   * One stray sample landing anywhere in the measured frames is therefore
-   * 1024 bytes and fails an assertion whose true reading is exactly 0. That is
-   * not hypothetical: the first run of this file failed here once and then
-   * passed 13 consecutive runs, which is what sent me looking.
+   * It was a mitigation, and its own comment said so: `allocationAllowance-
+   * FromControl` returned `control / 100`, which on this machine is 773-944
+   * bytes — below the profiler's 1024-byte sampling interval — so one stray
+   * sample failed an assertion whose true reading is exactly 0. Raising
+   * `repeats` made the stray have to recur in all six passes, because
+   * `attributedBytes` is the minimum across them.
    *
-   * `attributedBytes` is the **minimum** across passes, so raising `repeats`
-   * requires the stray to recur in every one of them. This strengthens the
-   * statistic rather than loosening the threshold — a real allocator reads
-   * tens of thousands of bytes in *every* pass and is still caught by a
-   * minimum. Filed as **BL-057**, because the same arithmetic applies to
-   * `core/math/allocation.test.ts` and the harness's own guard does not cover
-   * it.
+   * The allowance now clears four whole samples, so the mitigation is
+   * mitigating a defect that no longer exists — and leaving it would mean this
+   * file kept passing for the old reason and never exercised the fix. The
+   * harness default of 3 passes is what runs here now, which is also what the
+   * other consumer uses.
    */
-  const REPEATS = { repeats: 6 } as const;
+
 
   before(async () => {
     const control = await measureAttributedAllocation((i) => {
       keepAlive({ x: i + 0.5, y: 2.5, z: 3.5 });
     });
-    allowance = allocationAllowanceFromControl(control.attributedBytes);
+    assertInstrumentResolvesControl(control.attributedBytes, allowance);
     assert.ok(readRing() > 0, 'the escape ring holds nothing, so the control did not allocate');
   });
 
@@ -166,7 +167,7 @@ describe('EventBus: no allocation per emit for zero-subscriber events (criterion
     const bus = new EventBus<TestEvents>();
     const { attributedBytes, totalBytes, iterations } = await measureAttributedAllocation(() => {
       bus.emit('tick:done', 1);
-    }, REPEATS);
+    });
     assert.ok(
       attributedBytes <= allowance,
       `zero-subscriber emit attributed ${attributedBytes} bytes over ${iterations} calls ` +
@@ -182,7 +183,7 @@ describe('EventBus: no allocation per emit for zero-subscriber events (criterion
     bus.on('tick:done', noop)();
     const { attributedBytes, totalBytes } = await measureAttributedAllocation(() => {
       bus.emit('tick:done', 1);
-    }, REPEATS);
+    });
     assert.ok(
       attributedBytes <= allowance,
       `post-unsubscribe emit attributed ${attributedBytes} bytes (allowance ${allowance}, ` +
@@ -201,7 +202,7 @@ describe('EventBus: no allocation per emit for zero-subscriber events (criterion
     });
     const { attributedBytes, totalBytes } = await measureAttributedAllocation((i) => {
       bus.emit('tick:done', i);
-    }, REPEATS);
+    });
     assert.ok(sink > 0, 'the handler ran');
     assert.ok(
       attributedBytes <= allowance,

@@ -225,7 +225,7 @@ export interface AttributedAllocationOptions {
    * At 200000 the **control** read 0 in one pass of three, which is the failure
    * that matters: a warm-up long enough to leave the operation's allocation
    * unsampled makes a real allocator look clean.
-   * {@link allocationAllowanceFromControl} is what turns that into a loud
+   * {@link assertInstrumentResolvesControl} is what turns that into a loud
    * failure instead of a green run.
    */
   readonly warmup?: number;
@@ -380,43 +380,117 @@ function runMeasuredLoop(op: (i: number) => void, iterations: number): void {
   for (let i = 0; i < iterations; i++) op(i);
 }
 
+/** The default {@link AttributedAllocationOptions.samplingInterval}, exported so the allowance below is expressed in the same unit the instrument reports in. */
+export const DEFAULT_SAMPLING_INTERVAL = 1_024;
+
+/** Stray samples tolerated before an operation is called an allocator. Four; see {@link strayAllocationAllowance} for where the number comes from. */
+export const MAX_STRAY_SAMPLES = 4;
+
 /**
- * Fails unless the instrument demonstrably works in *this* process, and returns
- * the allowance an operation must come in under.
+ * The maximum `attributedBytes` an allocation-free operation may report,
+ * **expressed in sampling intervals and independent of the control**.
  *
- * ## Why the tests calibrate instead of comparing against a constant
+ * ## Why this replaced `controlBytes / 100` (BL-074)
  *
- * The absolute figures move with the machine, the Node version and how much V8
- * chose to inline, and BL-050's first dead end was a harness whose signal was
- * always zero — which passes every case, including the ones that should fail.
- * A constant threshold cannot tell "this operation allocates nothing" from "the
- * profiler recorded nothing". So the control is measured **in the same process,
- * in the same run**, and the allowance is derived from it.
+ * The old allowance was a hundredth of the control measured in the same
+ * process, and its own comment called the factor of 100 "slack in the middle
+ * of a two-order-of-magnitude gap". **It was not slack. It was less than one
+ * sample.**
  *
- * Two things are asserted here rather than assumed:
+ * A sampled allocation cannot weigh less than one `samplingInterval`, so 1024
+ * bytes is the smallest non-zero figure it can produce. A hundredth of the
+ * control clears that only when the control reads above 102 400, and it
+ * usually does not: measured 2026-09-12 it reads **54 912 – 67 584 idle** and
+ * **77 280 – 101 952 under four allocating hog threads**, so `control / 100`
+ * tolerated **0.54 – 1.00 samples** — zero, in practice. BL-065's two observed
+ * failures (`clamp` at 1344 against an allowance of 635, `stepSpring3` at 1040
+ * against 718) were each exactly one sample and were always going to fail. The
+ * 1-in-20 was the rate at which a sample strayed, not a rate at which the
+ * allowance was unlucky.
  *
- * 1. the control's attributed bytes are large — if a deliberate per-call
- *    allocator does not light up, nothing downstream means anything;
- * 2. the allowance is a hundredth of that, so an operation allocating one
- *    object per call cannot come in under it. The measured separation is total
- *    (control tens of thousands of bytes, allocation-free operations exactly
- *    zero), so a factor of 100 is not a tuned threshold sitting between two
- *    close numbers — it is slack in the middle of a two-order-of-magnitude gap,
- *    there so a single stray sample landing in an operation's frames is not a
- *    failure.
+ * **BL-057 filed this arithmetic on 2026-08-16 and BL-074 re-measured it
+ * independently on 2026-09-12.** Both are closed by this function.
+ *
+ * ## Where 4 comes from
+ *
+ * Measured on the same container, default options, in sampling intervals:
+ * allocation-free operations **0** (130 readings, both conditions); the worst
+ * stray anyone has observed **1.3** (BL-065, real full-suite load); one
+ * allocation per 10 000 calls **0 – 3.1**; one per 1000 calls **4.1 – 11.4**;
+ * the per-call control **53.6 – 99.6**. Four intervals sits **3× above** the
+ * worst observed stray and **13× below** the weakest control, with every
+ * allocation-free reading at zero rather than merely under the bound — a
+ * boundary in a gap, which is what the old one was called and was not.
+ * Decision **0034** carries the full tables.
+ *
+ * ## The limit this does not clear, stated rather than discovered later
+ *
+ * It separates "allocates once per call" from "one stray sample
+ * landed in these frames", which is what BL-074's first criterion asks for. It
+ * does **not** separate "once per call" from "once per thousand calls": that
+ * case reads 4224–11 648, whose bottom is a hair above four intervals, so it
+ * would be caught on most runs and not all. Such an operation still violates
+ * `CLAUDE.md`'s per-frame rule and this instrument will not reliably say so.
+ * Raising `MAX_STRAY_SAMPLES` moves the boundary the wrong way and lowering it
+ * re-creates BL-074; catching the sparse case needs a different instrument (a
+ * longer window or a finer interval, both of which the options table above
+ * shows have their own failure modes). Filed as **BL-078**.
+ *
+ * @param samplingInterval The interval the measurement was taken at.
+ * @param maxStraySamples Stray samples tolerated; see above.
+ */
+export function strayAllocationAllowance(
+  samplingInterval: number = DEFAULT_SAMPLING_INTERVAL,
+  maxStraySamples: number = MAX_STRAY_SAMPLES,
+): number {
+  return samplingInterval * maxStraySamples;
+}
+
+/**
+ * The factor by which the control must exceed the allowance for a run's
+ * "allocates nothing" results to mean anything.
+ *
+ * Eight. The measured control is 53.6–99.6 intervals against an allowance of
+ * 4, so the true factor is 13–25×; requiring 8 leaves room for a slower
+ * machine or a differently-inlining V8 without admitting a control that has
+ * stopped resolving. It is **stricter** than the old `>= 10_000` floor it
+ * replaces (8 × 4096 = 32 768), deliberately: a fixed allowance can afford to
+ * ask for a real gap where one defined as a hundredth of the control cannot.
+ */
+export const MIN_CONTROL_TO_ALLOWANCE_RATIO = 8;
+
+/**
+ * Fails unless the instrument demonstrably works in *this* process.
+ *
+ * ## The control stays, and this is the job it keeps
+ *
+ * BL-074 removed the allowance's dependence on the control's *magnitude*. It
+ * did not remove the control, and must not: BL-050's first dead end was a
+ * harness whose signal was always zero, which passes every case including the
+ * ones that should fail, and the control is the only thing that rules that
+ * out. A constant threshold cannot tell "this operation allocates nothing"
+ * from "the profiler recorded nothing".
+ *
+ * So the control is still measured **in the same process, in the same run**,
+ * and what it now establishes is the *gap* rather than the boundary: a
+ * deliberate per-call allocator must light up to at least
+ * {@link MIN_CONTROL_TO_ALLOWANCE_RATIO} times the allowance. That is the
+ * assertion the old derived allowance made implicitly and could not check,
+ * because a hundredth of the control is a hundredth of it however small it gets.
  *
  * @param controlBytes `attributedBytes` from measuring a deliberate allocator.
- * @returns The maximum `attributedBytes` an allocation-free operation may report.
+ * @param allowance The allowance from {@link strayAllocationAllowance}.
  */
-export function allocationAllowanceFromControl(controlBytes: number): number {
-  if (!(controlBytes >= 10_000)) {
+export function assertInstrumentResolvesControl(controlBytes: number, allowance: number): void {
+  const required = allowance * MIN_CONTROL_TO_ALLOWANCE_RATIO;
+  if (!(controlBytes >= required)) {
     throw new Error(
       `allocationHarness: the control allocated one object per call and the profiler attributed ` +
-        `only ${String(controlBytes)} bytes to it. Below ~10000 the instrument is not resolving a real ` +
-        `allocator, so every "allocates nothing" result in this run would be meaningless. ` +
+        `only ${String(controlBytes)} bytes to it, against an allowance of ${String(allowance)} ` +
+        `which needs at least ${String(required)} to be meaningful. The instrument is not resolving ` +
+        `a real allocator, so every "allocates nothing" result in this run would be meaningless. ` +
         `Check samplingInterval (65536 is too coarse and reports 0 for the control) and that ` +
         `MEASURED_LOOP_NAME still matches the loop function's name.`,
     );
   }
-  return controlBytes / 100;
 }

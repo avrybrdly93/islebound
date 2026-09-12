@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import { before, describe, it } from 'node:test';
 
 import {
-  allocationAllowanceFromControl,
+  assertInstrumentResolvesControl,
+  DEFAULT_SAMPLING_INTERVAL,
   keepAlive,
+  MAX_STRAY_SAMPLES,
   measureAttributedAllocation,
   readRing,
+  strayAllocationAllowance,
 } from '@core/math/allocationHarness';
 import {
   aabb,
@@ -101,11 +104,19 @@ const spring = createSpring(10.5, 0.5);
 const spring3 = createSpring3(1.5, 2.5, 3.5);
 
 /**
- * The allowance every operation below is measured against, derived from the
- * control measured in this same process. Set in `before`, so a bad instrument
- * fails the run once and loudly rather than once per operation.
+ * The allowance every operation below is measured against: four sampling
+ * intervals, **independent of the control** (BL-074, BL-057).
+ *
+ * It used to be `controlBytes / 100`, which on this machine is under one
+ * sample and therefore tolerated no stray at all — see
+ * `strayAllocationAllowance` for the measurements. The control has not gone
+ * away; it moved from setting this number to asserting the gap around it, in
+ * `before` below.
  */
-let allowance = Number.NaN;
+const allowance = strayAllocationAllowance();
+
+/** The control's reading, kept so the case below can assert the gap it establishes. */
+let controlBytes = Number.NaN;
 
 describe('the allocation harness itself', () => {
   before(async () => {
@@ -115,15 +126,23 @@ describe('the allocation harness itself', () => {
     const control = await measureAttributedAllocation((i) => {
       keepAlive({ x: i + 0.5, y: 2.5, z: 3.5 });
     });
+    controlBytes = control.attributedBytes;
     // Throws, with a diagnosis, if the profiler did not resolve a deliberate
-    // per-call allocator. Reference-machine reading is ~115000 bytes.
-    allowance = allocationAllowanceFromControl(control.attributedBytes);
+    // per-call allocator to many times the allowance. Readings measured
+    // 2026-09-12: 54912-67584 idle, 77280-101952 under contention.
+    assertInstrumentResolvesControl(controlBytes, allowance);
   });
 
-  it('detected the control allocation and derived a usable allowance', () => {
+  it('detected the control allocation and established the gap around the allowance', () => {
     assert.ok(
       Number.isFinite(allowance) && allowance > 0,
-      `the control did not yield an allowance (got ${allowance})`,
+      `the allowance is not a usable number (got ${allowance})`,
+    );
+    assert.equal(allowance, DEFAULT_SAMPLING_INTERVAL * MAX_STRAY_SAMPLES);
+    assert.ok(
+      controlBytes >= allowance * 8,
+      `the control read ${controlBytes}, which is not the wide gap above the ` +
+        `allowance ${allowance} that every "allocates nothing" result below rests on`,
     );
     // Reading the ring is not incidental: without a reader the stores are dead
     // code, V8 removes them and then the objects, and the control measures
@@ -131,16 +150,76 @@ describe('the allocation harness itself', () => {
     assert.ok(readRing() > 0, 'the escape ring holds nothing, so nothing actually escaped');
   });
 
-  it('refuses to derive an allowance from a control that read low', () => {
+  it('refuses to proceed from a control that read low', () => {
     // The guard's failing direction, as a test rather than as a comment. Both
     // ways of blinding the instrument were also exercised by hand and reverted:
     // a samplingInterval of 65536 and a stale MEASURED_LOOP_NAME each make the
     // control read 0, and each turns this file from 13 passes into 11 failures
     // carrying this message. That is the property the whole file rests on -- an
     // instrument that sees nothing must not report "allocates nothing".
-    assert.throws(() => allocationAllowanceFromControl(0), /not resolving a real allocator/);
-    assert.throws(() => allocationAllowanceFromControl(9_999), /not resolving a real allocator/);
-    assert.equal(allocationAllowanceFromControl(100_000), 1_000);
+    assert.throws(() => {
+      assertInstrumentResolvesControl(0, allowance);
+    }, /not resolving a real/);
+    assert.throws(() => {
+      assertInstrumentResolvesControl(allowance * 8 - 1, allowance);
+    }, /not resolving a real/);
+    assert.doesNotThrow(() => {
+      assertInstrumentResolvesControl(allowance * 8, allowance);
+    });
+  });
+
+  it('the allowance is derived from the sampling interval and not from the control', () => {
+    // BL-057 criterion 2 in one assertion: the number moves with the
+    // instrument's own granularity and with nothing else. Doubling the
+    // interval doubles it; a control ten times larger does not touch it.
+    assert.equal(strayAllocationAllowance(2_048), 2_048 * MAX_STRAY_SAMPLES);
+    assert.equal(strayAllocationAllowance(DEFAULT_SAMPLING_INTERVAL, 1), DEFAULT_SAMPLING_INTERVAL);
+    // And it clears one whole sample, which is the property BL-074 found
+    // missing: a single stray sample must not be able to fail an assertion
+    // whose true reading is zero.
+    assert.ok(allowance > DEFAULT_SAMPLING_INTERVAL);
+  });
+
+  it('tolerates the exact strays that failed before, and still rejects an object per call', () => {
+    // The regression half of BL-074/BL-057, pinned as numbers rather than as
+    // prose. These are the two readings that actually failed:
+    //   BL-065: clamp attributed 1344 against an allowance of 635.12
+    //   BL-065: stepSpring3 attributed 1040 against an allowance of 718.08
+    // Both are one sampling interval's worth -- a single stray sample -- and
+    // both were inside a true reading of exactly 0. They must now pass.
+    for (const stray of [1024, 1040, 1344, 2048]) {
+      assert.ok(stray <= allowance, `a stray of ${stray} bytes still fails (allowance ${allowance})`);
+    }
+    // And the old rule must be recorded as having failed them, so nobody
+    // "simplifies" back to it: the allowances it produced on this machine.
+    for (const oldAllowance of [635.12, 718.08]) {
+      assert.ok(oldAllowance < 1024, 'the old allowance was below one sampling interval');
+    }
+    // The boundary still has to reject a real allocator. The control measured
+    // in `before` is the live half of this; these are the floors it clears.
+    assert.ok(controlBytes > allowance * 8, `control ${controlBytes} against allowance ${allowance}`);
+  });
+
+  it('still catches a deliberate per-call allocator through the same assertion path', async () => {
+    // BL-074 criterion 2, as a permanent test rather than a one-off manual
+    // perturbation -- the standard BL-069 and BL-063 were held to. The old
+    // allowance was verified able to fail only by hand-editing the harness;
+    // this runs the allocator through `assertNoAllocation` itself and asserts
+    // it is rejected, so a future change that made the boundary useless would
+    // red this file rather than quietly widening what passes.
+    let rejected: Error | undefined;
+    try {
+      await assertNoAllocation('deliberate allocator', (i) => {
+        keepAlive({ x: i + 0.5, y: 2.5, z: 3.5 });
+      });
+    } catch (error) {
+      rejected = error as Error;
+    }
+    assert.ok(
+      rejected !== undefined,
+      'a deliberate per-call allocator passed the allocation assertion; the boundary is useless',
+    );
+    assert.match(rejected.message, /deliberate allocator attributed/);
   });
 
   it('reports zero for plain arithmetic', async () => {
