@@ -39,7 +39,13 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-_Nothing in progress._
+### BL-077 — Two test files have never been formatted, and no gate would notice
+- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
+- **Description:** `prettier --check .` fails on `packages/client/src/sim/ecs/Query.test.ts` and `packages/client/src/sim/ecs/Query.defTypes.test.ts`. **Measured 2026-09-07 by BL-072 on the untouched tree**, so it is not BL-072's: both were left unformatted by BL-065, whose log entry reports `lint`, `lint:rules`, `lint:docs` and `typecheck` clean and does not mention `format:check` — because **the verify block in `CLAUDE.md` and `AI_DEVELOPMENT_WORKFLOW.md` §6 does not contain it**. `pnpm format:check` exists as a script and nothing runs it.
+- **Acceptance criteria:**
+  - [ ] `pnpm format:check` is clean on the whole tree
+  - [ ] Something runs it that a session cannot forget — the verify block, or CI (BL-019), or both; a script nobody invokes is how this happened
+- **Notes:** The obvious worry is the 500-line limit, since `Query.test.ts` sits at 494 of 500 and `max-lines` is at `error`. **Checked before filing: formatting *shrinks* it to 491** and grows `Query.defTypes.test.ts` from 111 to 115, so there is no collision and the fix really is `pnpm format`. That check is the whole reason this is a filing rather than a one-line fix ridden along — had it gone the other way the item would have needed a seam, not a formatter. Note BL-019 (CI pipeline) may absorb the second criterion; whoever takes it first should say so.
 
 ## Ready — Phase 0: Foundation
 
@@ -95,14 +101,6 @@ _Nothing in progress._
   - [x] The soft limit is decided — **not** enforced, and `CLAUDE.md` now says so rather than rendering 300 and 500 identically as numbers with no indication that neither was checked. A `warn` in a CI-only lint is noise; fourteen files sit over 300 and every one is deliberate
   - [x] Test-file scope stated explicitly — **tests are in scope**, and they are the whole reason the rule bites. No source file is over 500 (largest: `allocationHarness.ts` at 422), so a sources-only rule would have enforced the limit precisely where nobody was breaking it
 - **Notes:** Filed 2026-08-30 by BL-068. **Done 2026-09-01**, see `34_DEVELOPMENT_LOG.md` and decision **0029**. Three test files split at existing `describe` seams, each into a pair plus a small fixture module: `World.test.ts` 547 → 262 + 278 + 42, `EventBus.test.ts` 533 → 332 + 212 + 41, `Rng.test.ts` 509 → 204 + 235 + 113. **Suite count unchanged at 342 pass / 0 fail across 88 suites**, which is the check that matters for a move (BL-068's Surprise 3). **The rule was verified to fire rather than assumed to** — a 511-line probe reports the violation and was then removed; a rule that cannot fail is not a rule. The fixture modules reverse decision 0028's alternative (c) deliberately: 0028 preferred visible duplication for fixtures that were "three lines and stable", and `Rng`'s shared block is 113 lines of chi-square machinery whose critical values are stated rather than eyeballed. `Query.test.ts` is left at **499**, one under — the next case anybody adds now fails lint, which is the rule working, and the failure says what to do.
-
-### BL-077 — Two test files have never been formatted, and no gate would notice
-- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
-- **Description:** `prettier --check .` fails on `packages/client/src/sim/ecs/Query.test.ts` and `packages/client/src/sim/ecs/Query.defTypes.test.ts`. **Measured 2026-09-07 by BL-072 on the untouched tree**, so it is not BL-072's: both were left unformatted by BL-065, whose log entry reports `lint`, `lint:rules`, `lint:docs` and `typecheck` clean and does not mention `format:check` — because **the verify block in `CLAUDE.md` and `AI_DEVELOPMENT_WORKFLOW.md` §6 does not contain it**. `pnpm format:check` exists as a script and nothing runs it.
-- **Acceptance criteria:**
-  - [ ] `pnpm format:check` is clean on the whole tree
-  - [ ] Something runs it that a session cannot forget — the verify block, or CI (BL-019), or both; a script nobody invokes is how this happened
-- **Notes:** The obvious worry is the 500-line limit, since `Query.test.ts` sits at 494 of 500 and `max-lines` is at `error`. **Checked before filing: formatting *shrinks* it to 491** and grows `Query.defTypes.test.ts` from 111 to 115, so there is no collision and the fix really is `pnpm format`. That check is the whole reason this is a filing rather than a one-line fix ridden along — had it gone the other way the item would have needed a seam, not a formatter. Note BL-019 (CI pipeline) may absorb the second criterion; whoever takes it first should say so.
 
 ### BL-078 — The allocation boundary cannot see an operation that allocates rarely
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-074 · **Docs to read:** 29
