@@ -154,7 +154,6 @@ describe('EventBus: no allocation per emit for zero-subscriber events (criterion
    * other consumer uses.
    */
 
-
   before(async () => {
     const control = await measureAttributedAllocation((i) => {
       keepAlive({ x: i + 0.5, y: 2.5, z: 3.5 });

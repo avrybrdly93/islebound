@@ -96,10 +96,7 @@ describe('QueryCache: the intersection itself', () => {
     assert.equal(queries.size, 1);
 
     assert.deepEqual(queries.query(Transform, Transform), [e]);
-    assert.deepEqual(
-      queries.query(Transform, Transform),
-      queries.query(Transform),
-    );
+    assert.deepEqual(queries.query(Transform, Transform), queries.query(Transform));
   });
 
   it('refuses a query over no components rather than returning the world', () => {

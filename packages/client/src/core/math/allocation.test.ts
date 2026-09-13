@@ -188,7 +188,10 @@ describe('the allocation harness itself', () => {
     // Both are one sampling interval's worth -- a single stray sample -- and
     // both were inside a true reading of exactly 0. They must now pass.
     for (const stray of [1024, 1040, 1344, 2048]) {
-      assert.ok(stray <= allowance, `a stray of ${stray} bytes still fails (allowance ${allowance})`);
+      assert.ok(
+        stray <= allowance,
+        `a stray of ${stray} bytes still fails (allowance ${allowance})`,
+      );
     }
     // And the old rule must be recorded as having failed them, so nobody
     // "simplifies" back to it: the allowances it produced on this machine.
@@ -197,7 +200,10 @@ describe('the allocation harness itself', () => {
     }
     // The boundary still has to reject a real allocator. The control measured
     // in `before` is the live half of this; these are the floors it clears.
-    assert.ok(controlBytes > allowance * 8, `control ${controlBytes} against allowance ${allowance}`);
+    assert.ok(
+      controlBytes > allowance * 8,
+      `control ${controlBytes} against allowance ${allowance}`,
+    );
   });
 
   it('still catches a deliberate per-call allocator through the same assertion path', async () => {

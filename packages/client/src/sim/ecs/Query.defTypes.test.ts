@@ -42,7 +42,11 @@ const Transform = defineComponent<Vec>('Transform');
 const PlayerTag = defineComponent<true>('PlayerTag');
 const Renderable = defineComponent<{ mesh: string }>('Renderable');
 
-function fixture(): { allocator: EntityAllocator; registry: ComponentRegistry; queries: QueryCache } {
+function fixture(): {
+  allocator: EntityAllocator;
+  registry: ComponentRegistry;
+  queries: QueryCache;
+} {
   const allocator = new EntityAllocator();
   const registry = new ComponentRegistry(allocator);
   return { allocator, registry, queries: new QueryCache(allocator, registry) };
