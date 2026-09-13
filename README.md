@@ -46,7 +46,7 @@ pnpm install
 pnpm dev            # http://localhost:5173
 pnpm test           # unit + integration
 pnpm sim --ticks 20000 --assert-hash   # headless determinism check
-pnpm lint && pnpm typecheck
+pnpm lint && pnpm typecheck   # lint also runs prettier --check
 pnpm build
 ```
 

@@ -47,6 +47,14 @@ this paragraph stays true — it fails if a doc names a `pnpm` script that
 neither exists nor names the backlog item that will build it). `pnpm test` is
 an alias for `pnpm test:node` until **BL-015** owns the harness.
 
+**`pnpm lint` runs `eslint .` and then `prettier --check .`**, so formatting is
+covered by the block above and there is no fourth line to remember. BL-077 is
+why: `pnpm format:check` existed as a script for months, the block did not name
+it, and four test files went unformatted — two of them added by a session whose
+own log reported the count as unchanged, because it had no way to see them.
+Adding a fourth line would have asked the next session to do the thing that
+evidence shows sessions do not do. Decision **0035**.
+
 All green locally before the PR. If the determinism hash changed intentionally, rebaseline with the reason in the commit body.
 
 ### 7. Document
