@@ -39,13 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-### BL-077 — Two test files have never been formatted, and no gate would notice
-- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs:** —
-- **Description:** `prettier --check .` fails on `packages/client/src/sim/ecs/Query.test.ts` and `packages/client/src/sim/ecs/Query.defTypes.test.ts`. **Measured 2026-09-07 by BL-072 on the untouched tree**, so it is not BL-072's: both were left unformatted by BL-065, whose log entry reports `lint`, `lint:rules`, `lint:docs` and `typecheck` clean and does not mention `format:check` — because **the verify block in `CLAUDE.md` and `AI_DEVELOPMENT_WORKFLOW.md` §6 does not contain it**. `pnpm format:check` exists as a script and nothing runs it.
-- **Acceptance criteria:**
-  - [ ] `pnpm format:check` is clean on the whole tree
-  - [ ] Something runs it that a session cannot forget — the verify block, or CI (BL-019), or both; a script nobody invokes is how this happened
-- **Notes:** The obvious worry is the 500-line limit, since `Query.test.ts` sits at 494 of 500 and `max-lines` is at `error`. **Checked before filing: formatting *shrinks* it to 491** and grows `Query.defTypes.test.ts` from 111 to 115, so there is no collision and the fix really is `pnpm format`. That check is the whole reason this is a filing rather than a one-line fix ridden along — had it gone the other way the item would have needed a seam, not a formatter. Note BL-019 (CI pipeline) may absorb the second criterion; whoever takes it first should say so.
+_Nothing in progress._
 
 ## Ready — Phase 0: Foundation
 
@@ -417,6 +411,16 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-077 — Two test files have never been formatted, and no gate would notice
+- **Completed:** 2026-09-13 · **PR:** — (pushed direct to `main`)
+- `package.json`, the four test files, `CLAUDE.md`, `docs/AI_DEVELOPMENT_WORKFLOW.md`, `README.md`. Decision **0035**. Suite unchanged at **356 pass / 0 fail across 90 suites** — no runtime code was touched, only whitespace inside four test files. `lint`, `lint:rules`, `lint:docs`, `typecheck`, `format:check` and `build` all clean.
+- **Both criteria met, and the item's own question is answered: BL-019 does NOT absorb criterion 2.** A CI gate and a local gate answer different questions, and BL-019 will run `pnpm lint` anyway and inherit this for free.
+- **The item says two files. There were four.** Bisected by re-running prettier over each revision's blob: `Query.test.ts` and `Query.defTypes.test.ts` were BL-065's, and **`EventBus.queued.test.ts` and `allocation.test.ts` were added by BL-074's own code commit** — in the session whose entries here and in `34` both say "`format:check` is still red on BL-077's two files, unchanged and not this task's". Written in good faith, false when written, and false for exactly the reason this item exists: the check is not in the verify block, so the session could not see that its own edits had doubled the count it was accurately reporting. **The earlier entries were not corrected** — decision 0033's rule, that a log records what was true when written.
+- **Criterion 2 is `"lint": "eslint . && prettier --check ."`,** decision 0033's move applied a second time (and 0033 named this item as its reason for making it the first time). `pnpm lint` is the first command of the verify block, so the check cannot be skipped without skipping the block. **Rejected: adding `pnpm format:check` as a fourth line** — a line in a document is exactly what was forgotten, since the script existed the whole time and the block simply did not name it. `lint:rules` and `lint:docs` are not carriers either; they sit in the prose beneath the block.
+- **The wiring was confirmed able to fail before it was trusted green**, following BL-069's Surprise 1: an unformatted line appended to `Query.defTypes.test.ts` made `pnpm lint` exit 1 naming that file; tree restored, back to 0.
+- **The filing's line-count check paid off as intended.** `Query.test.ts` 494 → **491** against a hard 500 with `max-lines` at `error`; the two BL-074 added were re-checked here at 213 → 212 and 436 → 442. `allocationHarness.ts` (496 of 500, decision 0034) was already formatted and untouched.
+- **Discovered work: BL-079**, that nothing asserts the wiring stays.
 
 ### BL-074 — `allocation.test.ts` fails about one run in twenty, on whichever operation catches a stray sample
 - **Completed:** 2026-09-12 · **PR:** — (pushed direct to `main`)

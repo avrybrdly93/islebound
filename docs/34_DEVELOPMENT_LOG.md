@@ -34,6 +34,54 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-13 — BL-077 The four files nothing was checking, and a check that runs
+
+**Type:** fix
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~1 session
+
+### What changed
+`pnpm format` over the tree, and `"lint"` became `eslint . && prettier --check .`. Docs describing the verify block updated in `CLAUDE.md`, `AI_DEVELOPMENT_WORKFLOW.md` §6 and `README.md`. Decision **0035**. Suite unchanged at **356 pass / 0 fail across 90 suites** — no runtime code was touched, only whitespace inside four test files. `lint`, `lint:rules`, `lint:docs`, `typecheck`, `format:check` and `build` all clean.
+
+Both criteria met. **BL-019 does not absorb the second one**, which the item asked whoever took it first to say: a CI gate and a local gate answer different questions, and BL-019 will run `pnpm lint` anyway and get this for free.
+
+### Why it was done this way
+The item's second criterion is the half that matters — "something runs it that a session cannot forget" — and the obvious move is to add `pnpm format:check` to the verify block as a fourth line. That is the wrong shape for **this** failure. `pnpm format:check` has existed as a script since the repository's first week; the block simply did not name it. Adding a fourth line asks the next session to do the thing the evidence below says sessions do not do.
+
+Folding it into `pnpm lint` puts it under the **first command of the verify block**, where it cannot be skipped without skipping the block. That is decision **0033**'s move applied a second time, and 0033 named this item as its reason for making it the first time. Note that `pnpm lint:rules` and `pnpm lint:docs` are *not* carriers: they are named in the prose beneath the block, not in it.
+
+**The wiring was confirmed able to fail before it was trusted green.** An unformatted line was appended to `Query.defTypes.test.ts`, `pnpm lint` exited 1 naming that file, and the tree was restored. That step follows BL-069's Surprise 1 — "a green lint does not verify a lint rule" — one level up: a green `pnpm lint` does not verify that `pnpm lint` checks formatting.
+
+### Surprises
+
+1. **The item says two files. There were four, and the two extra ones are the item's own best argument.** Bisected by re-running prettier over each revision's blob with the repository's config:
+
+   | revision | `Query.test.ts` | `Query.defTypes.test.ts` | `EventBus.queued.test.ts` | `allocation.test.ts` |
+   |---|---|---|---|---|
+   | `e28a1c5` (BL-069) | clean | absent | clean | clean |
+   | `b2958a0` (BL-074 claims) | **unformatted** | **unformatted** | clean | clean |
+   | `312deb2` (BL-074 code) | unformatted | unformatted | **unformatted** | **unformatted** |
+   | `4c2652d` (`main` today) | unformatted | unformatted | unformatted | unformatted |
+
+   The two new ones were added by **BL-074's own code commit** — in the session whose log entry and backlog entry both say "`format:check` is still red on BL-077's two files, unchanged and not this task's". That statement was written in good faith and was false when written, and it was false for precisely the reason BL-077 exists: the check is not in the verify block, so the session could not see that its own edits had doubled the count it was accurately reporting as unchanged.
+
+   **The generalisable form: a session's report of a known defect's extent is only as good as the gate that measures it. Without a gate, "unchanged" means "I did not look", and it is indistinguishable from "I looked and it was unchanged" — including to the session writing it.** That is a stronger argument for criterion 2 than the item could make when it was filed, because it is a measurement of the defect reproducing rather than an argument that it might.
+
+   **The earlier entries were not corrected.** Decision 0033's rule holds: a development log records what was true when it was written, and rewriting it to satisfy a checker destroys the evidence the checker exists to protect. This entry is the correction.
+
+2. **The filing's line-count check paid off exactly as intended, and would have changed the task if it had gone the other way.** `Query.test.ts` sat at 494 of a hard 500 with `max-lines` at `error`. Formatting **shrinks** it to 491. The item says checking that before filing is "the whole reason this is a filing rather than a one-line fix ridden along — had it gone the other way the item would have needed a seam, not a formatter". The two files BL-074 added were not covered by that check and had to be re-checked here: 213 → 212 and 436 → 442, both far clear. `allocationHarness.ts`, which decision 0034 records at 496 of 500, was already formatted and is untouched.
+
+3. **`pnpm format` reformatted nothing outside those four files.** 90 suites' worth of source and every markdown document were already clean, which says the ignore file and the config are doing their job and that this was four files' worth of drift rather than a tree-wide habit.
+
+### Tests
+None added, and the reason is worth stating rather than leaving as an omission: the change is a build-script wiring and a whitespace pass, and the thing that would need protecting — that `pnpm lint` keeps running the format check — cannot be protected by a test in this suite without the guard having the very defect it guards against. That is filed as **BL-079** with the trap named. What stands in for a test here is the control: the wiring was made to fail on demand before it was trusted.
+
+### Follow-ups
+- **BL-079** — nothing asserts that `pnpm lint` still runs the format check. One string in `package.json`; a later "tidy" back to `eslint .` returns the repository to where it started, silently. Filed rather than solved (an S task, `35` §3), with the obvious host named as a trap: `tools/check-doc-commands.ts` already reads the root scripts, but `pnpm lint:docs` is **not** in the verify block either, so hosting the guard there reproduces BL-077's shape one level up.
+
+---
+
 ## 2026-09-12 — BL-074 An allocation allowance measured in samples, and the same defect found twice
 
 **Type:** fix
