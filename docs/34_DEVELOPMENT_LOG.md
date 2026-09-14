@@ -34,6 +34,43 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-14 — BL-079 A guard must not be reachable only through the thing it guards
+
+**Type:** chore
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~1 session
+
+### What changed
+`packages/client/src/dev/rootScripts.test.ts`, a `node:test` suite under `pnpm test` that reads the real root `package.json` and asserts the `lint` script still runs a format check. Decision **0036**. Suite **359 pass / 0 fail across 91 suites**, was 356/90 — three new assertions in one new suite, and no existing count moved. `lint`, `lint:rules`, `lint:docs`, `typecheck`, `format:check` and `build` all clean.
+
+### Why it was done this way
+BL-079's filing note offered three candidate hosts and listed the wrong one first. **A check under `pnpm lint` itself — an ESLint rule reading `package.json`, another `&&` clause, or folding `lint:rules` into `lint` — cannot work**, and the reason is the whole of this task:
+
+> A guard must not be reachable only through the thing it guards.
+
+The single edit BL-079 exists to catch is `"lint": "eslint ."`. Under any of those spellings that edit removes the format check *and the guard that would have noticed*, in one stroke, and the tree goes quiet exactly as it did before BL-077. The note already made half this argument about `tools/check-doc-commands.ts` — hosting there reproduces BL-077's shape one level up, because `lint:docs` is not in the verify block either — and did not notice that the same argument applies to `lint` itself more strongly rather than less.
+
+That leaves the verify block's other two entries. `pnpm typecheck` was checked and is not a host: a `package.json` script is a string and there is no type to assert against. So `pnpm test` is the only entry that both reaches a guard and survives an edit to `lint`.
+
+What the guard asserts is chosen for the same reason BL-077's own fix was structural: **it asks whether `lint` runs whatever `format:check` runs**, not whether it contains the literal text `prettier`, and not whether it equals an exact string. Pinning the string fails on a harmless reordering and has to be hand-edited by anybody adding a legitimate clause, and **a guard that cries wolf gets deleted** — which is a worse outcome than the regression it watches for. Naming the formatter once, in `format:check`, keeps a deliberate swap legal and still catches the strip-out.
+
+### Surprises
+
+1. **`shared` cannot host a test that reads a file, and the failure is invisible until you run the gates.** The guard was written into `packages/shared/src/repo/` first, on the reasoning that a repo-level invariant does not belong in the client. `pnpm test` was **green** — `node --test` strips types and never resolves them — and then `pnpm typecheck` and `pnpm lint` both went red with four unresolvable `node:` imports, because `@types/node` is a devDependency of `client` and not of `shared`. The lesson is narrow and worth having: **in this repository a green `pnpm test` says nothing about whether a new file's imports resolve**, because the test runner and the type checker disagree about what a module is. Run the whole verify block, not the part that is about the thing you wrote.
+
+2. **`dev/` is a declared layer with no directory**, which reads as an omission and is not one. `04` §5 declares it and `eslint.config.js` already carries its boundaries rule (`dev` may import from every layer). This task is simply its first inhabitant, so no architecture was touched and no `35` §3 line was crossed — but a session looking for somewhere to put developer tooling would not find `dev/` by listing `packages/client/src/`, which is how it stayed empty through twenty sessions.
+
+3. **The regress this item opens is real, terminates, and terminates somewhere specific.** Putting the guard under `pnpm test` means nothing now guards the `test` script. That is BL-077's shape a third time, one level further out — and unlike the first two it does **not** have a fix inside the repository, because every runner here is described by a string somebody can edit in the repository it runs on. It terminates at CI, which is BL-019. Filed as **BL-080** with that argument, and with the note that the trick which closed BL-079 is forbidden there by construction: hosting a `test`-script guard under `pnpm lint` works, and then needs its own guard the moment somebody edits `lint`. That is circular rather than terminating.
+
+### Tests
+Three assertions in one new suite: both scripts exist, `lint` runs whatever `format:check` runs, and `lint` still runs ESLint too (so the fold did not replace one gate with the other). **Verified to fire rather than assumed to**, following BL-069's Surprise 1 and decision 0035's own precedent. **Three mutants, each failing exactly one assertion with the other two green**: `lint` stripped to `eslint .`, `lint` stripped to `prettier --check .`, and `format:check` deleted outright. That one-to-one mapping is the part worth recording — it is what says the three assertions are three checks rather than one written out long, which a single mutant would not have distinguished.
+
+### Follow-ups
+- BL-080 — nothing guards the `test` script, which is what now carries every other guard
+
+---
+
 ## 2026-09-13 — BL-077 The four files nothing was checking, and a check that runs
 
 **Type:** fix

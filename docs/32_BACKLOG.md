@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-079**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-081**.
 
 **Task format:**
 
@@ -96,13 +96,14 @@ _Nothing in progress._
   - [x] Test-file scope stated explicitly — **tests are in scope**, and they are the whole reason the rule bites. No source file is over 500 (largest: `allocationHarness.ts` at 422), so a sources-only rule would have enforced the limit precisely where nobody was breaking it
 - **Notes:** Filed 2026-08-30 by BL-068. **Done 2026-09-01**, see `34_DEVELOPMENT_LOG.md` and decision **0029**. Three test files split at existing `describe` seams, each into a pair plus a small fixture module: `World.test.ts` 547 → 262 + 278 + 42, `EventBus.test.ts` 533 → 332 + 212 + 41, `Rng.test.ts` 509 → 204 + 235 + 113. **Suite count unchanged at 342 pass / 0 fail across 88 suites**, which is the check that matters for a move (BL-068's Surprise 3). **The rule was verified to fire rather than assumed to** — a 511-line probe reports the violation and was then removed; a rule that cannot fail is not a rule. The fixture modules reverse decision 0028's alternative (c) deliberately: 0028 preferred visible duplication for fixtures that were "three lines and stable", and `Rng`'s shared block is 113 lines of chi-square machinery whose critical values are stated rather than eyeballed. `Query.test.ts` is left at **499**, one under — the next case anybody adds now fails lint, which is the rule working, and the failure says what to do.
 
-### BL-079 — Nothing asserts that `pnpm lint` still runs the format check
-- **Phase:** 0 · **Size:** S · **Depends on:** BL-077 · **Docs to read:** —
-- **Description:** BL-077 fixed "the script exists and nothing runs it" by folding `prettier --check .` into `pnpm lint` (decision **0035**). That is structural rather than advisory, which is the point — but it is one string in `package.json`, and a later edit that "tidies" `lint` back to `eslint .` puts the repository exactly where it started, silently and with no failing anything. The same class BL-077 itself was: a rule nobody checks.
+### BL-080 — Nothing guards the `test` script, which is what now carries every other guard
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-079 · **Docs to read:** 29
+- **Description:** BL-079 put the format-check guard under `pnpm test`, because a guard reachable only through the thing it guards is not one (decision **0036**). That closes the `lint` hole and opens a smaller one exactly one level up: `test` is `node --test 'packages/*/src/**/*.test.ts'`, and an edit narrowing that glob — or dropping `--expose-gc`, which `allocationHarness.ts` needs — silently stops running some or all of the suite. Nothing would fail. It is BL-077's shape a third time, and each retelling is one level further out.
 - **Acceptance criteria:**
-  - [ ] Something fails if the root `lint` script stops running a format check
-  - [ ] That something is itself run by the verify block, or the guard has the defect it guards against
-- **Notes:** Filed 2026-09-13 by BL-077, which measured the need and deliberately did not chase it — the item was an S and `35` §3 forbids expanding scope mid-task. The argument for filing it at all is decision **0029**'s record: this repository breached an unchecked soft limit fourteen times. `tools/check-doc-commands.ts` already reads the root `package.json`'s `scripts` and is run by `pnpm lint:docs`, which makes it the obvious host — **but note that `lint:docs` is not in the verify block either** (it is named in the prose beneath it), so hosting the guard there reproduces BL-077's shape one level up. Whoever takes this should say how they avoided that; the honest options are probably a check under `pnpm lint` itself, or BL-019's CI, or both.
+  - [ ] Something fails if the `test` script stops reaching the suite it reaches today
+  - [ ] That something is **not** itself run only by `pnpm test`, or it has the defect it guards against — which, note, means the answer cannot be the same shape as BL-079's
+  - [ ] Whatever it is does not fail on a legitimate change to the glob (adding a package, moving a directory), or it will be deleted rather than fixed
+- **Notes:** Filed 2026-09-14 by BL-079, which hit the regress and deliberately did not chase it (`35` §3 — the item was an S). **The regress genuinely terminates, and where it terminates is the point: it terminates at CI**, which is **BL-019**, because CI is the only runner not described by a string somebody can edit in the repository it runs on. So this item is probably not independent work — it is most likely a criterion that BL-019 should absorb, and the honest first move is to check whether BL-019's own acceptance criteria already cover it before writing anything. Note also that criterion 2 forbids the trick that closed BL-079: hosting a guard under `pnpm lint` would work here (a `test`-script edit cannot reach `lint`), and would then need its own guard the moment somebody edits `lint`, which is circular rather than terminating.
 
 ### BL-078 — The allocation boundary cannot see an operation that allocates rarely
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-074 · **Docs to read:** 29
@@ -411,6 +412,17 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-079 — Nothing asserts that `pnpm lint` still runs the format check
+- **Completed:** 2026-09-14 · **PR:** — (pushed direct to `main`)
+- `packages/client/src/dev/rootScripts.test.ts` (new), `docs/32_BACKLOG.md`, `docs/33_CURRENT_TASK.md`, `docs/34_DEVELOPMENT_LOG.md`, `docs/40_DECISION_LOG.md`. Decision **0036**. Suite **359 pass / 0 fail across 91 suites**, was 356/90 — three new assertions in one new suite, and no existing count moved. `lint`, `lint:rules`, `lint:docs`, `typecheck`, `format:check` and `build` all clean.
+- **Both criteria met.** Criterion 1: three assertions over the real root `package.json` — both scripts exist, `lint` runs whatever `format:check` runs, and `lint` still runs ESLint too. Criterion 2: the host is `pnpm test`, the third command of the verify block's first line.
+- **THE ITEM'S FIRST SUGGESTED HOST IS THE ONE THAT CANNOT WORK, AND SAYING SO IS MOST OF THIS TASK.** The note offered "a check under `pnpm lint` itself" first. **A guard must not be reachable only through the thing it guards**: the single edit BL-079 exists to catch is `"lint": "eslint ."`, and under an ESLint rule, an extra `&&`, or a folded `lint:rules`, that edit removes the format check *and the guard that would have noticed* in one stroke. The note's own flag about `lint:docs` — that hosting there reproduces BL-077's shape one level up — is the same argument one step weaker, and it applies to `lint` itself more strongly, not less.
+- **`pnpm typecheck` was checked and is not available as a host:** a `package.json` script is a string and there is no type to assert against. That leaves `test` as the only entry in the verify block that both reaches a guard and survives an edit to `lint`.
+- **Verified to fire rather than assumed to**, following BL-069's Surprise 1. **Three mutants, each failing exactly one assertion with the other two green**: `lint` stripped to `eslint .`, `lint` stripped to `prettier --check .`, and `format:check` deleted outright. That one-to-one mapping is what says the three assertions are three checks and not one written out long.
+- **It asserts that `lint` runs whatever `format:check` runs, not the literal text `prettier`, and not the exact script string.** Pinning the string fails on a harmless reordering and has to be edited by anybody adding a legitimate clause, and **a guard that cries wolf gets deleted** — a worse outcome than the regression it watches. Naming the formatter once, in `format:check`, keeps a deliberate swap legal and still catches the strip-out.
+- **`dev/` gains its first inhabitant, and it is not an invention** — `04` §5 declares the layer and the boundaries config already carries its rule. It is there because `pnpm test` globs `packages/*/src` only, so `tools/` (where the concern belongs) is unreachable without editing the one script nothing guards; and because only `client` carries `@types/node`. **`shared` was tried first and failed**: four unresolvable `node:` imports, red on both typecheck and lint, and adding `@types/node` there to host one file is a dependency added for a test's convenience.
+- **Discovered work: BL-080**, that nothing guards the `test` script — the same shape a third time, one level further out, and it terminates at CI (BL-019) because CI is the only runner not described by an editable string.
 
 ### BL-077 — Two test files have never been formatted, and no gate would notice
 - **Completed:** 2026-09-13 · **PR:** — (pushed direct to `main`)
