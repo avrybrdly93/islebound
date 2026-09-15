@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-079**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-081**.
 
 **Task format:**
 
@@ -96,13 +96,14 @@ _Nothing in progress._
   - [x] Test-file scope stated explicitly — **tests are in scope**, and they are the whole reason the rule bites. No source file is over 500 (largest: `allocationHarness.ts` at 422), so a sources-only rule would have enforced the limit precisely where nobody was breaking it
 - **Notes:** Filed 2026-08-30 by BL-068. **Done 2026-09-01**, see `34_DEVELOPMENT_LOG.md` and decision **0029**. Three test files split at existing `describe` seams, each into a pair plus a small fixture module: `World.test.ts` 547 → 262 + 278 + 42, `EventBus.test.ts` 533 → 332 + 212 + 41, `Rng.test.ts` 509 → 204 + 235 + 113. **Suite count unchanged at 342 pass / 0 fail across 88 suites**, which is the check that matters for a move (BL-068's Surprise 3). **The rule was verified to fire rather than assumed to** — a 511-line probe reports the violation and was then removed; a rule that cannot fail is not a rule. The fixture modules reverse decision 0028's alternative (c) deliberately: 0028 preferred visible duplication for fixtures that were "three lines and stable", and `Rng`'s shared block is 113 lines of chi-square machinery whose critical values are stated rather than eyeballed. `Query.test.ts` is left at **499**, one under — the next case anybody adds now fails lint, which is the rule working, and the failure says what to do.
 
-### BL-079 — Nothing asserts that `pnpm lint` still runs the format check — **IN PROGRESS 2026-09-15**
-- **Phase:** 0 · **Size:** S · **Depends on:** BL-077 · **Docs to read:** —
-- **Description:** BL-077 fixed "the script exists and nothing runs it" by folding `prettier --check .` into `pnpm lint` (decision **0035**). That is structural rather than advisory, which is the point — but it is one string in `package.json`, and a later edit that "tidies" `lint` back to `eslint .` puts the repository exactly where it started, silently and with no failing anything. The same class BL-077 itself was: a rule nobody checks.
+### BL-080 — Nothing type-checks `tools/`, and four TypeScript files live there
+- **Phase:** 0 · **Size:** S · **Depends on:** — · **Docs to read:** 06, 07
+- **Description:** `pnpm typecheck` is `pnpm -r --if-present run typecheck`, and the only two packages that answer it include `src` alone (`packages/client` also takes `vite.config.ts`). There is no root `tsconfig.json`. So **no `tools/*.ts` file is type-checked by anything**: `check-lint-rules.ts`, `check-doc-commands.ts`, `check-workflow-doc.ts` and now `check-lint-script.test.ts`. They run under `node --experimental-strip-types`, which *erases* types without checking them, so an annotation there is documentation that nothing verifies. ESLint does lint the directory, which is why this has stayed invisible: the files are covered by one gate and not the other.
 - **Acceptance criteria:**
-  - [ ] Something fails if the root `lint` script stops running a format check
-  - [ ] That something is itself run by the verify block, or the guard has the defect it guards against
-- **Notes:** Filed 2026-09-13 by BL-077, which measured the need and deliberately did not chase it — the item was an S and `35` §3 forbids expanding scope mid-task. The argument for filing it at all is decision **0029**'s record: this repository breached an unchecked soft limit fourteen times. `tools/check-doc-commands.ts` already reads the root `package.json`'s `scripts` and is run by `pnpm lint:docs`, which makes it the obvious host — **but note that `lint:docs` is not in the verify block either** (it is named in the prose beneath it), so hosting the guard there reproduces BL-077's shape one level up. Whoever takes this should say how they avoided that; the honest options are probably a check under `pnpm lint` itself, or BL-019's CI, or both.
+  - [ ] Every `.ts` under `tools/` is type-checked by something the verify block reaches
+  - [ ] The mechanism is stated — a `tools/tsconfig.json` picked up by the recursive `typecheck`, a root project, or something else — and so is why the other options were not taken
+  - [ ] Verified able to fail: introduce a type error in a `tools/` file, watch `pnpm typecheck` report it, remove it
+- **Notes:** Found 2026-09-15 by BL-079, whose own new file is the fourth instance, and deliberately not fixed inline (`35` §3 — BL-079 was an S about one `package.json` string, and adding a TypeScript project is a different change touching how the whole repository is compiled). **This is the same class as BL-077 and BL-079 rather than a new one**: a rule the repository states and does not check. Note the likely shape of the trap before starting: `--experimental-strip-types` refuses some constructs that `tsc` accepts (enums, namespaces, parameter properties), so turning `tsc` on over `tools/` may surface the *opposite* problem — code that type-checks but will not run. Check both directions.
 
 ### BL-078 — The allocation boundary cannot see an operation that allocates rarely
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-074 · **Docs to read:** 29
@@ -411,6 +412,18 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-079 — Nothing asserts that `pnpm lint` still runs the format check
+- **Completed:** 2026-09-15 · **PR:** — (pushed direct to `main`)
+- `tools/check-lint-script.test.ts` (new), `package.json`. Suite **356 → 363 pass / 0 fail across 90 suites** — seven new cases, no new suite, no runtime code touched. `lint`, `lint:rules`, `lint:docs`, `typecheck`, `format:check` and `build` all clean.
+- **Both criteria met.** Criterion 1: the guard reads the real root `package.json` and fails if `lint` stops reaching a format check. Criterion 2: it is run by `pnpm test`, which is the third command of the verify block.
+- **THE HOST THAT LOOKS OBVIOUSLY RIGHT CANNOT WORK, AND THAT IS THIS ITEM'S ONE REAL FINDING.** Folding the guard into `pnpm lint` itself — `eslint . && prettier --check . && node ... check-lint-script.ts` — is the natural reading of "a check under `pnpm lint`", and it is self-defeating: **the edit this guard exists to catch is somebody rewriting `lint`, and that edit deletes the guard in the same stroke as the format check.** A guard living inside the string it guards is removed by the change it is meant to report. So it must be run by a *different* member of the verify block; `pnpm typecheck` is a recursive `tsc` and hosts no runtime assertion, which leaves `pnpm test`.
+- **`tools/check-doc-commands.ts` was rejected for the reason the item named**: it is run by `pnpm lint:docs`, which is not in the verify block but in the prose beneath it. Hosting there reproduces BL-077's shape one level up.
+- **`test:node`'s glob gained `tools/**/*.test.ts`.** This is repository-meta rather than game code, so it does not belong in `packages/client` or `packages/shared`. Probed before the design was committed to: `node --test` takes both patterns, 357 with a one-line probe present against a 356 baseline. It also opens the door `check-lint-rules.ts` predicted in its own header; nothing was moved there in this task.
+- **The guard follows script calls rather than string-matching**, because both spellings are real here — `lint` runs `prettier --check .` directly today, and `format:check` is that same command under a name. It is deliberately not a string equality against today's value: `lint` gaining a third step is not the regression, and a test that fails on that gets weakened by the next person who hits it. **`--write` is rejected however it is reached**, which is the one place being liberal would be actively wrong: a `lint` that formats rather than checking reports nothing and leaves a dirty tree — the exact silent pass this guards.
+- **Confirmed able to fail before it was trusted**, following BL-069's Surprise 1. Six of the seven cases drive the predicate over manifests the repository does not have; and by hand, with `lint` set to `eslint .`, the suite read 6 pass / 1 fail with a message naming the current value, decision 0035, and both ways to put it right. Tree restored.
+- **The residual is declared rather than left to be found.** The guard now leans on `test:node`'s glob the way the format check leaned on `lint`'s string. Smaller, not closed, and **not closable from inside** — a test in `tools/` cannot notice the glob stopped selecting `tools/`. The closure is BL-019's CI, where a check that silently stops running shows as a job that stops reporting. Recorded as BL-019's content rather than filed again.
+- **Discovered work: BL-080**, that nothing type-checks `tools/` at all.
 
 ### BL-077 — Two test files have never been formatted, and no gate would notice
 - **Completed:** 2026-09-13 · **PR:** — (pushed direct to `main`)
