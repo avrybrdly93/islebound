@@ -34,6 +34,125 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-19 — BL-080 A type annotation nothing checks is a comment, and four files' worth were
+
+**Type:** chore
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~1h
+
+### What changed
+
+`tools/` is now a workspace package. It has a `package.json` with one script —
+`tsc --noEmit -p tsconfig.json` — a `tsconfig.json` extending
+`tsconfig.base.json`, and an entry in `pnpm-workspace.yaml`. `pnpm typecheck` is
+`pnpm -r --if-present run typecheck`, so the directory is reached **by
+construction**: no string in the root script names `tools`, and nothing has to
+remember to keep one.
+
+`tools/check-typecheck-coverage.test.ts` (6 cases) is the guard, in the shape
+BL-079 left one.
+
+**The first run of the new typecheck found two real errors**, in
+`check-lint-script.test.ts` — a file four days old, written by the session
+directly above this entry. It read `scripts.lint` where
+`noPropertyAccessFromIndexSignature` requires `scripts['lint']`. Both fixed
+here, because they are the entire point of the item: an annotation nothing
+verifies is documentation, and this repository had four files of it.
+
+### Why it was done this way
+
+Four mechanisms were possible and the item asks for the rejections as well as
+the choice:
+
+1. **A workspace package** — taken. It is the shape every other type-checked
+   thing here already has (`packages/client` and `packages/shared` each own a
+   `tsconfig.json` and the identical one-line script), and the recursive script
+   reaches it without being told about it.
+2. **A root `tsconfig.json` plus `tsc --noEmit -p . && pnpm -r ...`.** Rejected,
+   and *not* on taste. **The root has no `typescript` at all** — only
+   `packages/client` does, at 5.9.3 — so this option needs the same dependency
+   addition as option 1 **and** a root script edit on top. Strictly more change
+   for a weaker guarantee, because the reach then hangs on one string, which is
+   precisely the failure mode BL-077 and BL-079 are about.
+3. **Add `tools/` to an existing package's `include`.** Rejected: `04` §5 puts
+   `tools/` outside both packages, and it would make `packages/client`'s
+   typecheck fail on a repository script.
+4. **`typeRoots` pointed into `packages/client/node_modules/@types`.** Rejected:
+   it reaches across a package boundary into another package's installed tree.
+
+`tools/*.mjs` is deliberately outside the `include`, and that is stated in the
+tsconfig rather than left to be inferred from silence. The criterion says every
+`.ts`; pulling hand-written JavaScript in needs `allowJs` and a decision about
+whether it should be checked at all. Filed as **BL-081**.
+
+The tsconfig narrows `lib` to `ES2022` and sets `types: ["node"]`, rather than
+inheriting the base config's DOM and WebWorker libs: `tools/` runs under Node
+and never in a browser, and the narrowing is here rather than in the base
+config because `packages/client` genuinely needs those.
+
+### Surprises
+
+1. **THE ITEM PREDICTED A TRAP IN ONE DIRECTION AND THE REAL DEFECT WAS IN THE
+   OTHER.** BL-080's notes warned that `--experimental-strip-types` refuses
+   constructs `tsc` accepts (enums, namespaces, parameter properties), so
+   turning `tsc` on might surface code that type-checks and will not run. That
+   was checked — all four files still run, the test file through the runner —
+   and **none of them use any of those constructs**. What actually turned up was
+   the plain version of the problem the item was filed for: two type errors that
+   had been sitting there uncaught. The warning was worth following and the
+   answer was "no", which is a result rather than a waste.
+2. **THE GUARD'S OWN FIRST DRAFT FAILED `pnpm lint`, ON A RULE ONLY THE NEW
+   TYPECHECK MAKES RELEVANT.** `const ch = source[i]!` is the natural way to
+   write an indexed read under `noUncheckedIndexedAccess`, and
+   `@typescript-eslint/no-non-null-assertion` forbids it. The two rules together
+   mean the bound has to be re-stated (`if (ch === undefined) break;`) rather
+   than asserted away. Worth knowing before writing anything else in `tools/`:
+   this directory has been linted all along, so its files already satisfy the
+   lint rules, but they have never had to satisfy the *type* rules, and the two
+   sets interact.
+3. **THE MECHANISM AND ITS GUARD LANDED IN ONE COMMIT AND THE MESSAGE DOES NOT
+   NAME THE GUARD.** `baecfd9` carries `check-typecheck-coverage.test.ts`, 203
+   lines, while its message describes only the workspace package and the two
+   fixes. Recorded here rather than rewritten, for the reason decision 0033 gives
+   for not correcting this log: history is evidence. The habit to keep is the
+   one `35` §3 implies — write the commit message after looking at what is
+   staged, not after deciding what the change was.
+
+### Tests
+
+`tools/check-typecheck-coverage.test.ts`, 6 cases. Three assert the reach:
+`pnpm-workspace.yaml` still lists `tools`, `tools/package.json` still has a
+`typecheck` script naming a tsconfig, and the root `typecheck` is still
+recursive. One asserts coverage — **every `.ts` actually on disk under `tools/`
+is selected by the tsconfig's `include`**, read from the directory rather than
+from a list of four names, so a fifth file added later is covered without
+anybody editing this test. Two drive the pure helpers (`includeSelects`,
+`stripJsonComments`) over inputs the repository does not have.
+
+**Four controls run, none committed** (BL-069's Surprise 1, a green run of a
+checker does not verify the checker): dropping `tools` from
+`pnpm-workspace.yaml` fails case 1; removing the `typecheck` script fails case
+1; narrowing `include` to one filename fails case 3; making the root
+`typecheck` non-recursive fails case 2. Each failed **its own** assertion and no
+other, and all four were reverted.
+
+**The typecheck itself was confirmed able to fail before being trusted green**,
+as decision 0033 and 0035 both did: a `const bl080Probe: number = 'not a number'`
+in `check-workflow-doc.ts` is reported by `pnpm typecheck` as
+`check-workflow-doc.ts(225,7): error TS2322`, and was then removed.
+
+Suite **369 pass / 0 fail across 90 suites**, up from 363 — six new cases, no
+new suite. `lint`, `lint:rules`, `lint:docs`, `typecheck`, `format:check` and
+`build` all clean.
+
+### Follow-ups
+
+- **BL-081** — `tools/*.mjs` is still unchecked by anything but ESLint. Two
+  files, both load-bearing for `pnpm test`.
+
+---
+
 ## 2026-09-15 — BL-079 A guard cannot live inside the thing it guards
 
 **Type:** test
