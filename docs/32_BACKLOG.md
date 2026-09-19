@@ -39,7 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-_Nothing in progress._
+**BL-080** — claimed 2026-09-19. See `33_CURRENT_TASK.md` for the mechanism decided before any code and the three options rejected.
 
 ## Ready — Phase 0: Foundation
 

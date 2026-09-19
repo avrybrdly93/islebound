@@ -4,21 +4,62 @@
 
 ---
 
-## Status: IDLE
+## Status: IN PROGRESS — BL-080
 
-No task in progress. **BL-079 is complete** (2026-09-15).
-`tools/check-lint-script.test.ts` fails if the root `lint` script stops reaching
-a format check, and it is run by `pnpm test` — the third command of the verify
-block. `34_DEVELOPMENT_LOG.md` 2026-09-15 has the detail; its **Surprises** 1
-and 2 are the ones worth reading.
+**Nothing type-checks `tools/`, and four TypeScript files live there.**
+Claimed 2026-09-19, before any code, per `AI_DEVELOPMENT_WORKFLOW.md` §2.
 
-Suite **363 pass / 0 fail across 90 suites**, up from 356 — seven new cases, no
-new suite, no runtime code touched. `lint`, `lint:rules`, `lint:docs`,
-`typecheck`, `format:check` and `build` all clean.
+Taken as the **topmost unblocked Phase 0 item in `32_BACKLOG.md`'s Ready
+order**, checked in the file rather than inherited from the last handoff:
+BL-056 is Phase 1 (phase discipline bars it, twenty-first session running),
+BL-067 still says on its own face not to take it until `23_SAVE_SYSTEM.md` has
+a component-level format and it still has none, and BL-080 is next.
 
-**No decision-log entry was added.** BL-079 implements decision 0035's guard
-rather than deciding anything new, and `AI_DEVELOPMENT_WORKFLOW.md` §7 asks for
-`40` only on architecturally significant choices.
+### The mechanism decided before writing it, so the run is measured against something
+
+Four ways to reach `tools/*.ts` with a type-checker, and the item asks for the
+choice **and** the rejections:
+
+1. **Make `tools/` a workspace package with its own `tsconfig.json` and
+   `typecheck` script.** Chosen. `pnpm typecheck` is
+   `pnpm -r --if-present run typecheck`, so a package answering that script is
+   reached **by construction** rather than by a string somebody has to remember
+   to keep. It is also the shape every other type-checked thing here already
+   has: `packages/client` and `packages/shared` each own a `tsconfig.json` and
+   the same one-line script.
+2. **A root `tsconfig.json` plus `tsc --noEmit -p . && pnpm -r ...` in the root
+   script.** Rejected, and *not* on taste: the root has no `typescript` at all
+   (only `packages/client` does, 5.9.3), so this needs the same dependency
+   addition as option 1 **and** a root script edit on top — strictly more
+   change for a weaker guarantee, since the reach then depends on one string.
+3. **Add `tools/` to an existing package's `include`.** Rejected: `04` §5's
+   direction rules put `tools/` outside both packages, and it would make
+   `packages/client`'s typecheck fail on a repository script.
+4. **`typeRoots` pointing into `packages/client/node_modules/@types`.**
+   Rejected: it reaches across a package boundary into another package's
+   installed tree, which is exactly the kind of edge nothing else here has.
+
+### What this run must check that the criteria do not say outright
+
+`node --experimental-strip-types` runs every `tools/*.ts` file today and it
+**erases** types rather than checking them — and it refuses some constructs
+`tsc` accepts (enums, namespaces, parameter properties). So turning `tsc` on can
+surface the *opposite* failure. **All four files get run after the change, not
+just compiled.**
+
+### Acceptance, restated as what will be shown
+
+- [ ] every `.ts` under `tools/` type-checked by something `pnpm typecheck` reaches
+- [ ] the mechanism stated, with the three rejected options and why
+- [ ] verified able to fail: a real type error reported, then removed
+- [ ] the reverse direction checked: all four files still **run** under `--experimental-strip-types`
+- [ ] a guard, as BL-079 left one, so the next edit that silently unhooks `tools/` fails
+
+`tools/*.mjs` (`aliasResolver.mjs`, `registerAliases.mjs`) is **out of scope and
+stated rather than overlooked**: the criterion says every `.ts`, and pulling
+JavaScript in needs `allowJs` and a checking decision of its own.
+
+---
 
 ## Next action for an agent
 
