@@ -1,0 +1,28 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    // `tools/` runs under Node and never in a browser, so it takes `node`
+    // types and none of the DOM ones `tsconfig.base.json` puts in `lib` for
+    // the client. `lib` is narrowed here rather than in the base config:
+    // `packages/client` genuinely needs DOM and WebWorker, and this is the one
+    // project that does not.
+    "lib": ["ES2022"],
+    "types": ["node"],
+    // Every file here is executed by `node --experimental-strip-types`, which
+    // erases annotations one file at a time and never reads another module's
+    // types. `verbatimModuleSyntax` and `isolatedModules` are already on in
+    // the base config for the same reason; `allowImportingTsExtensions` is
+    // added because these files import nothing local today but would have to
+    // use the on-disk `.ts` specifier if they ever did — the runtime resolves
+    // real paths, not the bundler-style extensionless ones the packages use.
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  // `.ts` only, which is BL-080's first criterion exactly. `aliasResolver.mjs`
+  // and `registerAliases.mjs` are deliberately out: pulling them in needs
+  // `allowJs`, and whether hand-written JavaScript in this repository should be
+  // type-checked at all is a decision of its own rather than a side effect of
+  // this one.
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "lint-fixtures"]
+}

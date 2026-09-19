@@ -115,14 +115,14 @@ export function runsFormatCheck(
 test('the root lint script reaches a format check', () => {
   const scripts = readScripts();
   assert.ok(
-    scripts.lint !== undefined,
+    scripts['lint'] !== undefined,
     'the root package.json has no `lint` script at all; the verify block in ' +
       'AI_DEVELOPMENT_WORKFLOW.md §6 opens with `pnpm lint`',
   );
   assert.ok(
     runsFormatCheck('lint', scripts),
     'the root `lint` script no longer reaches a format check. It is ' +
-      `currently ${JSON.stringify(scripts.lint)}. BL-077 folded ` +
+      `currently ${JSON.stringify(scripts['lint'])}. BL-077 folded ` +
       '`prettier --check .` into it (decision 0035) precisely so formatting ' +
       'could not go unchecked again; restore it, or move the format check ' +
       'somewhere else the verify block reaches and update this guard to ' +
