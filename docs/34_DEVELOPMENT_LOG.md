@@ -34,6 +34,119 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-20 — BL-081 The last two files nothing type-checked, and the rule that stops there being a third
+
+**Type:** chore
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~1h
+
+### What changed
+
+`tools/aliasResolver.mjs` and `tools/registerAliases.mjs` are now
+`aliasResolver.ts` and `registerAliases.ts`. They were the two files BL-080
+deliberately left out, and they are not incidental: the root `test:node` script
+passes `registerAliases` to `node --import`, so **every test in the repository
+loads through them**.
+
+Converting them needed **no configuration change at all**.
+`tools/tsconfig.json` already says `include: ["**/*.ts"]`, so the rename was
+enough to put both inside `pnpm typecheck` — no `allowJs`, no `checkJs`, no
+JSDoc discipline, no new flag.
+
+**The first typecheck of them found four real errors**, all `TS7006`: every
+parameter of the `resolve` hook was an implicit `any`. They are now typed
+through Node's own `ResolveHook` from `node:module`. That is the third
+consecutive item where the first check of an unchecked file found something
+(BL-079, BL-080, this one), which is at the point of being a prediction rather
+than a coincidence.
+
+`tools/check-typecheck-coverage.test.ts` gained three cases and lost a
+paragraph. The paragraph said `.mjs` was deliberately out of scope; the cases
+assert the **decision** in its place — the repository has exactly one
+hand-written JavaScript file, `eslint.config.js`, and the exemption list is
+checked in both directions so a stale entry cannot leave a standing hole.
+
+Suite **372 pass / 0 fail across 90 suites**, up from 369. `lint`,
+`lint:rules`, `lint:docs`, `typecheck`, `format:check` and `build` all clean.
+
+### Why it was done this way
+
+The item named four options and asked for the general question to be answered
+rather than met a fifth time. Decision **0037** carries the full argument; in
+short:
+
+1. **Convert to `.ts`** — taken. No new flag, and it removes the second
+   language rather than accommodating it.
+2. **`allowJs` alone.** Rejected: syntax and inference, no annotations, so the
+   four `TS7006` errors would still be invisible. A gate that reports nothing
+   is the shape of defect this item exists to stop repeating.
+3. **`allowJs` + `checkJs`.** Real checking, but it makes JSDoc load-bearing in
+   a tree whose every other file states types in the language, and it makes
+   JavaScript a supported way to write things here rather than a legacy.
+4. **Deliberately neither.** Rejected outright: it is the status quo, and the
+   status quo produced BL-077, BL-079, BL-080 and BL-081 in a row.
+
+**`eslint.config.js` was the one that needed a real trade rather than a
+preference.** ESLint v9 reads `eslint.config.ts` only through `jiti`, a
+dependency on the lint step that `35` §4 puts behind justification — for a file
+that configures the linter and ships nowhere. The exemption is cheaper than the
+dependency, and making it a checked list of exactly one is what keeps it from
+becoming a habit.
+
+### Verification
+
+`pnpm lint && pnpm typecheck && pnpm test` — clean, 372/90. `pnpm sim` and
+`pnpm check:bundle` do not exist yet (BL-014, BL-018) and the run is still green,
+as `AI_DEVELOPMENT_WORKFLOW.md` §6 says to expect. `pnpm build` clean.
+
+**Broken once each before being trusted**, which is carried-forward finding 3:
+a bad annotation in `aliasResolver.ts` reports `TS2322`; a bad argument in
+`registerAliases.ts` reports `TS2769`; both fail `pnpm typecheck`. And four
+controls against the new guard, each breaking exactly one assertion — a new
+`tools/*.mjs` fails both new cases, a stray `packages/**/*.js` fails the first,
+a stale exemption entry fails the first, and dropping `--import` from
+`test:node` fails the second.
+
+### Surprises
+
+1. **The conversion worked, and the item was right that a session would not have
+   known.** Its notes spend a paragraph on why: `register()` runs in the main
+   thread before the first aliased import, the hook itself runs on a loader
+   thread, and whether a `.ts` hook can register itself while Node is stripping
+   its own types is a module-loading-order question. **It was run, not
+   reasoned**, on Node v22.22.2, and it works — 369/369 before any other change.
+   The whole decision turned on that one command, and the reasoning that would
+   have replaced it could have gone either way with equal confidence.
+2. **The cheapest option was also the strictest, which is not the usual shape.**
+   `allowJs` sounds like the small change and conversion like the large one; in
+   fact conversion touched no configuration and `allowJs` would have added a
+   flag, a second language's rules, and a weaker guarantee. Worth remembering
+   the next time an option is ranked by how large it *sounds*.
+3. **Fixing one stale reference surfaced another that was more wrong.**
+   `eslint.config.js` had a comment naming `tools/aliasResolver.mjs`, which this
+   change invalidated, so it was updated. Eight lines above it, the same file
+   still says the `tools/` scripts "are not members of any TypeScript project" —
+   which **stopped being true at decision 0036**, one session earlier, and
+   switches the type-aware lint rules off over a directory that now has a
+   project. Filed as **BL-082** rather than fixed inline (`35` §3), because
+   turning those rules on is a change with its own findings. **A comment
+   invalidated by a change two sessions ago is not visible to either session
+   unless something walks past it.**
+4. **The general question was answerable in one assertion, and the reason is
+   arithmetic.** "Should hand-written JavaScript be type-checked here" sounds
+   like a policy needing a policy mechanism. After the conversion the repository
+   contains **exactly one** `.js` file, so the rule is a one-element allowlist
+   over `git ls-files` — nine lines. The question was only hard while the answer
+   was unknown.
+
+### Follow-ups
+
+- **BL-082** — `eslint.config.js` still says `tools/` has no TypeScript project,
+  and turns the type-aware rules off there. Filed above, Surprise 3.
+
+---
+
 ## 2026-09-19 — BL-080 A type annotation nothing checks is a comment, and four files' worth were
 
 **Type:** chore
