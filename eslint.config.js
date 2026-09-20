@@ -312,7 +312,8 @@ export default tseslint.config(
     // across the first suites, none of them a defect, and `void describe(...)`
     // at every call site would be noise that has to be undone later. The rule
     // is off for test files only, and only until the runner changes; BL-015
-    // should delete this block along with `tools/aliasResolver.mjs`.
+    // should delete this block along with `tools/aliasResolver.ts` (it was
+    // `.mjs` until BL-081; decision 0037).
     //
     // `restrict-template-expressions` goes with it for the same span: an
     // assertion message that interpolates a measured number

@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-081**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-083**.
 
 **Task format:**
 
@@ -39,7 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-**BL-081** — `tools/*.mjs` is checked by ESLint and by nothing else. Claimed 2026-09-20.
+_Nothing in progress._
 
 ## Ready — Phase 0: Foundation
 
@@ -105,15 +105,24 @@ Current phase: **Phase 0 — Foundation**
   - [x] Verified able to fail: `const bl080Probe: number = 'not a number'` in `check-workflow-doc.ts` is reported as `check-workflow-doc.ts(225,7): error TS2322` by `pnpm typecheck`, then removed
 - **Notes:** Found 2026-09-15 by BL-079, whose own new file is the fourth instance, and deliberately not fixed inline (`35` §3 — BL-079 was an S about one `package.json` string, and adding a TypeScript project is a different change touching how the whole repository is compiled). **This is the same class as BL-077 and BL-079 rather than a new one**: a rule the repository states and does not check. **Done 2026-09-19**, see `34_DEVELOPMENT_LOG.md` and decision **0036**. **The first run found two real errors**, in `check-lint-script.test.ts` — BL-079's own file, four days old — which read `scripts.lint` where `noPropertyAccessFromIndexSignature` requires `scripts['lint']`. **The trap this item warned about was checked and was not there**: all four files use no enum, namespace or parameter property, and all four still run under `--experimental-strip-types` after the change, the test file through the test runner. What was there was the plain version of the defect the item describes. Guarded by `tools/check-typecheck-coverage.test.ts` (6 cases, four controls each breaking exactly one assertion), which lives under `pnpm test` for BL-079's reason rather than inside the typecheck it guards. `tools/*.mjs` is deliberately outside the `include` and is filed as **BL-081**. Note the likely shape of the trap before starting: `--experimental-strip-types` refuses some constructs that `tsc` accepts (enums, namespaces, parameter properties), so turning `tsc` on over `tools/` may surface the *opposite* problem — code that type-checks but will not run. Check both directions.
 
-### BL-081 — `tools/*.mjs` is checked by ESLint and by nothing else
+### BL-081 — `tools/*.mjs` is checked by ESLint and by nothing else — **DONE 2026-09-20**
 - **Phase:** 0 · **Size:** S · **Depends on:** BL-080 · **Docs to read:** 06, 07
 - **Description:** BL-080 put every `tools/*.ts` file under `tsc`. It deliberately left the two `.mjs` files out — `aliasResolver.mjs` and `registerAliases.mjs` — because its criterion said every `.ts` and pulling JavaScript in needs `allowJs`, which is a decision rather than a side effect. Those two are not incidental: `registerAliases.mjs` is loaded by `--import` in `test:node`, so **every test in the repository runs through them**, and a mistake there fails the third command of the verify block in a way that points at the wrong file.
 - **Acceptance criteria:**
-  - [ ] Decided, and recorded, whether hand-written `.js`/`.mjs` in this repository is type-checked at all — the options are `allowJs` alone (syntax and inference, no annotations), `allowJs` + `checkJs` (real checking, and JSDoc becomes load-bearing), converting the two files to `.ts`, or deliberately neither
-  - [ ] If checked: `tools/tsconfig.json` selects them and `pnpm typecheck` reports an error introduced in one, then removed
-  - [ ] If converted: both still load under `node --import`, which is the constraint that decides it — `--experimental-strip-types` has to erase them before Node can use them as a loader hook
-  - [ ] `tools/check-typecheck-coverage.test.ts`'s coverage case is updated to match whichever answer, so the guard keeps meaning what it says
-- **Notes:** Filed 2026-09-19 by BL-080. **Check the conversion option first and check it by running, not by reading**: `registerAliases.mjs` is passed to `node --import` before the test files load, and whether a `.ts` loader hook can register itself under `--experimental-strip-types` is a question about module-loading order that a session will get wrong from first principles. If it cannot, `allowJs` is the only route and the decision narrows to `checkJs` or not. This is the same class as BL-077, BL-079 and BL-080 — a rule the repository states and does not check — and that is now **four** instances, which is the argument for answering the general question here rather than meeting it a fifth time.
+  - [x] Decided, and recorded — **decision 0037**: this repository is TypeScript and the two files are converted, with `eslint.config.js` the single named exception. `allowJs` alone was rejected for reporting nothing (the four errors below would still be invisible), `allowJs` + `checkJs` for making JSDoc load-bearing in a tree whose every other file states types in the language, "neither" for being the status quo that produced BL-077/079/080/081 in a row, and converting `eslint.config.js` too for costing a `jiti` dependency on the lint step
+  - [x] If checked: `tools/tsconfig.json` selects them **with no config change at all** — `include: ["**/*.ts"]` already covered the names they now have. Broken once each and confirmed: `TS2322` in `aliasResolver.ts`, `TS2769` in `registerAliases.ts`, both failing `pnpm typecheck`
+  - [x] If converted: both still load under `node --import` — **established by running it, not by reading**, which is what the notes asked for. Node v22.22.2, 369/369 with the loader as `.ts`. The first typecheck of them found **four** real `TS7006` implicit-`any` parameters on the `resolve` hook, now typed through `node:module`'s own `ResolveHook`
+  - [x] `tools/check-typecheck-coverage.test.ts` updated — and it asserts the **decision** rather than today's file list: `git ls-files` is walked for `.js`/`.mjs`/`.cjs`/`.jsx` and anything outside a one-element exemption list fails, the list checked in both directions so a stale entry cannot leave a standing hole. Four controls each break exactly one assertion
+- **Notes:** Filed 2026-09-19 by BL-080; **done 2026-09-20**, see `34_DEVELOPMENT_LOG.md` and decision 0037. Suite **372 pass / 90 suites**, up from 369. The notes below were right about the thing that mattered: the conversion worked, and a session reasoning from first principles about loader-thread ordering would not have known. **Check the conversion option first and check it by running, not by reading**: `registerAliases.mjs` is passed to `node --import` before the test files load, and whether a `.ts` loader hook can register itself under `--experimental-strip-types` is a question about module-loading order that a session will get wrong from first principles. If it cannot, `allowJs` is the only route and the decision narrows to `checkJs` or not. This is the same class as BL-077, BL-079 and BL-080 — a rule the repository states and does not check — and that is now **four** instances, which is the argument for answering the general question here rather than meeting it a fifth time.
+
+### BL-082 — `eslint.config.js` still says `tools/` is not in a TypeScript project, and turns the type-aware rules off there
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-081 · **Docs to read:** 06, 07
+- **Description:** The `disableTypeChecked` block lists `tools/**/*.ts` and `tools/**/*.tsx` alongside `**/*.js` and the lint fixtures, on the stated ground that "the `tools/` scripts ... are not members of any TypeScript project, so the type-aware rules have nothing to work from". **That stopped being true at decision 0036**, which gave `tools/` a `package.json` and a `tsconfig.json`, and BL-081 has now moved two more files into it. So the type-aware lint rules are off over a directory that has a project, for a reason that no longer holds — and `tools/` currently holds a test file every test run loads through.
+- **Acceptance criteria:**
+  - [ ] The `tools/**/*.ts` entries are either removed from the `disableTypeChecked` block with the type-aware rules passing, or kept with a reason that is true in 2026
+  - [ ] If removed, `tools/tsconfig.json` is wired into the flat config's `languageOptions.parserOptions` so the rules have a program to read
+  - [ ] Whatever the findings are, they are fixed rather than suppressed, or filed with the rule named
+- **Notes:** Filed 2026-09-20 by BL-081, which found the stale comment while fixing its own reference in the same file and deliberately did not act on it (`35` §3 — switching type-aware rules on over a directory is a change with its own findings and its own size, not a comment edit). Expect the same shape BL-080 and BL-081 both hit: the first run of a check over files nothing was checking finds real things. Note the block's test-file sibling below it is a separate concern with its own expiry (BL-015).
 
 ### BL-078 — The allocation boundary cannot see an operation that allocates rarely
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-074 · **Docs to read:** 29
