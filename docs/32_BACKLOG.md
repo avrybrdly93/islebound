@@ -39,7 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-_Nothing in progress._
+**BL-081** — `tools/*.mjs` is checked by ESLint and by nothing else. Claimed 2026-09-20.
 
 ## Ready — Phase 0: Foundation
 
