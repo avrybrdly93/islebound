@@ -1,3 +1,4 @@
+import type { ResolveHook } from 'node:module';
 import { fileURLToPath, pathToFileURL, URL } from 'node:url';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -14,6 +15,17 @@ import path from 'node:path';
  * **Node resolves neither** — so a `node --test` run over the source cannot
  * load a single module that imports a sibling by alias. This hook is what makes
  * `pnpm test:node` possible before Vitest lands.
+ *
+ * ## Why it is TypeScript
+ *
+ * It was `.mjs` until BL-081, for no stronger reason than that BL-004 wrote it
+ * that way. That left it — and `registerAliases` — lint-checked and
+ * type-unchecked, the repository's recurring defect (BL-077, BL-079, BL-080).
+ * Node registers a `.ts` loader hook through `--import` perfectly well, which
+ * BL-081 established by running it rather than by reasoning about it, so the
+ * rename needed no `allowJs` and no JSDoc discipline. Turning `tsc` on found
+ * four real `TS7006` implicit-`any` parameters here on its first pass, which is
+ * BL-080's finding arriving again on schedule. See decision 0037.
  *
  * ## Its expiry date
  *
@@ -52,7 +64,7 @@ const ALIASES = {
  * `index.ts` — in that order, and give up rather than guess if none exists, so
  * a typo surfaces as "cannot find module" and not as a confusing later error.
  */
-function resolveFile(basePath) {
+function resolveFile(basePath: string): string | null {
   const candidates = [
     basePath,
     `${basePath}.ts`,
@@ -67,7 +79,7 @@ function resolveFile(basePath) {
   return null;
 }
 
-export function resolve(specifier, context, nextResolve) {
+export const resolve: ResolveHook = (specifier, context, nextResolve) => {
   for (const [prefix, target] of Object.entries(ALIASES)) {
     if (!specifier.startsWith(prefix)) continue;
 
@@ -87,4 +99,4 @@ export function resolve(specifier, context, nextResolve) {
   }
 
   return nextResolve(specifier, context);
-}
+};
