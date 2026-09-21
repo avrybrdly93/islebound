@@ -39,7 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-_Nothing in progress._
+**BL-082** — `eslint.config.js` still says `tools/` is not in a TypeScript project, and turns the type-aware rules off there. Claimed 2026-09-21; see `33_CURRENT_TASK.md`.
 
 ## Ready — Phase 0: Foundation
 
