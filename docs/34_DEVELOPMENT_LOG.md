@@ -34,6 +34,125 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-21 — BL-082 The type-aware rules come back on over `tools/`, and the exemption that had to stay
+
+**Type:** chore
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~1h
+
+### What changed
+
+`eslint.config.js`'s `disableTypeChecked` block no longer lists
+`tools/**/*.ts` and `tools/**/*.tsx`. It had listed them since BL-002 on the
+stated ground that those scripts "are not members of any TypeScript project" —
+which stopped being true at decision **0036** and was one item further out of
+date after **0037**. So the type-aware lint rules were off over a directory
+with a project, four scripts and two test files in it.
+
+Switching them on reported **six errors in two files**, all fixed in source:
+one `@typescript-eslint/prefer-optional-chain` in `check-doc-commands.ts`, and
+five `@typescript-eslint/restrict-template-expressions` across
+`check-doc-commands.ts` and `check-workflow-doc.ts`. Decision **0038** records
+the whole thing.
+
+### Why it was done this way
+
+**The findings were fixed rather than the rule relaxed, and the alternative
+was genuinely defensible.** All five `restrict-template-expressions` sites are
+a `number` interpolated into a `console` summary line — `finding.line`,
+`findings.length`, `COVERED_DOCS.length` — and a `number` always stringifies
+meaningfully, which is not what that rule exists to catch. The config
+**already exempts this exact pattern for test files**, so `allowNumber: true`
+over `tools/` would have been a reasonable reading of "kept with a reason that
+is true". It was rejected because the criterion says *fixed rather than
+suppressed*, because `String(n)` is five characters at five sites against a
+new rule option, and because a repository whose recurring defect is rules
+getting turned off should not answer its first finding by turning one down.
+
+**Nothing was added to `parserOptions`, and the item asked for it.**
+`projectService: true` resolves the nearest `tsconfig.json` per file rather
+than reading a fixed project list, so it finds `tools/tsconfig.json` on its
+own. The proof is not that lint passed — it is that the probe reported
+`restrict-template-expressions`, a *type-aware* rule that cannot report
+anything at all without a program.
+
+### Surprises
+
+**1. The entry was load-bearing, and the part that mattered was the part the
+comment got right by accident.** Removing the whole `tools/**/*.ts` entry left
+`pnpm lint` green and turned `pnpm lint:rules` red with "4 custom lint rule(s)
+did not fire. The config is broken." `tools/lint-fixtures/**` is in `ignores`,
+so `pnpm lint` never reaches it — but `tools/check-lint-rules.ts` lints those
+files **through the ESLint API, precisely to prove the four custom rules
+fire**, and they are outside `tools/tsconfig.json`'s `include` on purpose.
+With no exemption the project service could not find them and every fixture
+failed to **parse**, so all four rules reported nothing. The block now reads
+`['**/*.js', '**/*.mjs', '**/*.cjs', 'tools/lint-fixtures/**']`. The original
+comment was half right; the half that was right was the half about the
+fixtures, not the half about the scripts. **The general form is worth keeping:
+when a glob covers two populations for one stated reason, check the reason
+against each of them separately — it can be false for one and true for the
+other, and the false half is the one that gets read.**
+
+**2. Two gates disagreed, and the one in the verify block was the one that was
+wrong.** `pnpm lint` is the first command of `CLAUDE.md`'s verify block;
+`pnpm lint:rules` is named only in the prose beneath it. The break above was
+invisible to the first and fatal to the second. That is decision 0035's
+argument arriving from the other side — 0035 moved `format:check` *into*
+`lint` because prose is a weaker carrier, and here the prose-carried gate is
+the only thing that caught a broken config. Both readings are right: the
+weaker carrier needs strengthening **and** it was the one that worked today.
+
+**3. The predicted configuration change was zero, for the second consecutive
+item.** BL-081's was too (decision 0037, `include: ["**/*.ts"]` already
+covered the renamed files). Same underlying reason both times: the config was
+already written generally enough. The lesson is not that configuration changes
+are usually unnecessary — it is 0037's own consequence applied again, **rank
+an option by what it touches and find out by running it**.
+
+**4. One control proved nothing, and is recorded as a miss.** A
+`no-unnecessary-condition` probe (`const x: string = "x"; if (x) …`) reported
+`@typescript-eslint/no-inferrable-types` first — a *stylistic* rule that was
+never off here — so it would have gone green under the old config too. Two of
+the four controls were genuine type-aware evidence; this one was not. **A
+control has to be checked against the thing it is controlling for, not only
+observed to fail.**
+
+### Tests
+
+**None added, and that is the item's one real gap.** Verification was by
+control, run and reverted, in both directions — which is stronger than a green
+run but does not persist:
+
+| probe on a `tools/` source file | old config | new config |
+|---|---|---|
+| `no-floating-promises` (type-aware) | silent | **reports** |
+| `restrict-template-expressions` (type-aware) | silent | **reports** |
+| `Math.random` ban (syntactic) | reports | reports |
+
+The third row is what shows the change did only what it claims: the syntactic
+rules were unaffected either way. Nothing now asserts that `tools/**/*.ts`
+stays out of the block, so a later edit could put it back with `lint`,
+`lint:rules`, `typecheck` and `test` all still green. Filed as **BL-083**
+rather than built here, per `35` §3 — and the reason it is not a ten-minute
+job is measured rather than guessed: a fixture proving a *type-aware* rule
+fires cannot live in `tools/lint-fixtures/`, because this entry's own decision
+keeps that directory exempt and outside the tsconfig. It needs a second
+fixture directory, inside `tools/tsconfig.json`'s `include` and inside
+ESLint's `ignores`.
+
+Gate after the change: `pnpm lint`, `pnpm typecheck`, `pnpm lint:rules`,
+`pnpm lint:docs` and `pnpm test` all exit 0, with the suite at **372 pass /
+0 fail across 90 suites** — unchanged from the baseline measured before any
+edit, which is the expected result for a config change that adds no case.
+`pnpm sim` and `pnpm check:bundle` still do not exist (BL-014, BL-018).
+
+### Follow-ups
+- **BL-083** — nothing asserts that the type-aware lint rules stay on over `tools/`.
+
+---
+
 ## 2026-09-20 — BL-081 The last two files nothing type-checked, and the rule that stops there being a third
 
 **Type:** chore
