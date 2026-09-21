@@ -292,14 +292,36 @@ export default tseslint.config(
   },
 
   {
-    // `eslint.config.js`, the `tools/` scripts and the lint fixtures are not
-    // members of any TypeScript project, so the type-aware rules have nothing
-    // to work from. Turning them off here is what typescript-eslint documents
-    // for exactly this case; the alternative is inventing a tsconfig for a
-    // handful of files that are never bundled. The syntactic rules -- which
-    // is all of the custom ones -- are unaffected, so the fixtures still
-    // prove what they are there to prove.
-    files: ['**/*.js', '**/*.mjs', '**/*.cjs', 'tools/**/*.ts', 'tools/**/*.tsx'],
+    // Hand-written JavaScript is not a member of any TypeScript project, so
+    // the type-aware rules have nothing to work from and are switched off the
+    // way typescript-eslint documents for exactly this case. The syntactic
+    // rules -- which is all of the custom ones -- are unaffected.
+    //
+    // **`tools/**/*.ts` used to be in this list and is deliberately not any
+    // more (BL-082).** The stated reason was that those scripts belonged to no
+    // TypeScript project; decision 0036 gave `tools/` a `tsconfig.json` and
+    // BL-081 moved two more files into it, so the reason had expired and the
+    // rules were off over a directory with a project and a test file in it.
+    // Nothing had to be added to `parserOptions` to switch them on:
+    // `projectService: true` above resolves the nearest `tsconfig.json` per
+    // file rather than reading a fixed project list, so it finds
+    // `tools/tsconfig.json` by itself. The six errors that first run reported
+    // were fixed, not suppressed -- see `34_DEVELOPMENT_LOG.md` 2026-09-21.
+    //
+    // **`tools/lint-fixtures/**` stays, and it is the half of the old entry
+    // that was load-bearing.** The fixtures are in `ignores` above, so
+    // `pnpm lint` never reaches them -- but `tools/check-lint-rules.ts` lints
+    // them through the ESLint API precisely to prove the custom rules fire,
+    // and they are out of `tools/tsconfig.json`'s `include` on purpose. Drop
+    // this entry and the project service cannot find them, every fixture
+    // fails to *parse*, and all four custom rules report nothing: `pnpm lint`
+    // stays green while `pnpm lint:rules` goes red with "The config is
+    // broken". Measured, BL-082 -- the first attempt at this item removed the
+    // whole `tools/**/*.ts` entry and hit exactly that.
+    //
+    // So the original comment was half right, and the half that was right is
+    // the half about the fixtures, not the half about the scripts.
+    files: ['**/*.js', '**/*.mjs', '**/*.cjs', 'tools/lint-fixtures/**'],
     extends: [tseslint.configs.disableTypeChecked],
   },
 
