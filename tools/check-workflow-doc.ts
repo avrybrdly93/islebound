@@ -211,12 +211,12 @@ if (stray.length > 0 || !documents.includes(CANONICAL) || findings.length > 0) {
     );
   }
   for (const finding of findings) {
-    console.error(`${finding.doc}:${finding.line}: ${finding.why}.`);
+    console.error(`${finding.doc}:${String(finding.line)}: ${finding.why}.`);
   }
   process.exit(1);
 }
 
 console.log(
   `check-workflow-doc: one workflow document (${CANONICAL}), and every reference to it in ` +
-    `${markdownFiles('', repoRoot).length} markdown file(s) resolves.`,
+    `${String(markdownFiles('', repoRoot).length)} markdown file(s) resolves.`,
 );

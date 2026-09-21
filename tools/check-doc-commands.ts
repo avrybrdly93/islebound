@@ -342,7 +342,7 @@ function filteredFindings(
         findings.push({ doc, script: named, line: index + 1, why });
       };
 
-      if (pkg !== undefined && pkg.scripts.has(script)) {
+      if (pkg?.scripts.has(script)) {
         // Built and present. A row here is a stale promise, and it is reported
         // unconditionally: the table is how a forward reference is approved,
         // and one left behind after the script lands quietly pre-approves the
@@ -437,11 +437,11 @@ const findings = COVERED_DOCS.flatMap((doc) => findingsIn(doc, scripts, packages
 if (findings.length > 0) {
   for (const finding of findings) {
     console.error(
-      `${finding.doc}:${finding.line}: names \`pnpm ${finding.script}\`, but ${finding.why}.`,
+      `${finding.doc}:${String(finding.line)}: names \`pnpm ${finding.script}\`, but ${finding.why}.`,
     );
   }
   console.error(
-    `\n${findings.length} unbuildable command reference(s). Either add the script (to package.json, or to the ` +
+    `\n${String(findings.length)} unbuildable command reference(s). Either add the script (to package.json, or to the ` +
       `filtered package's own manifest), or add a row to UNBUILT_COMMANDS / UNBUILT_FILTERED_COMMANDS and name ` +
       `that backlog item beside the command (BL-062 is why this check exists).`,
   );
@@ -449,5 +449,5 @@ if (findings.length > 0) {
 }
 
 console.log(
-  `check-doc-commands: ${COVERED_DOCS.length} document(s) clean — every \`pnpm\` command they name either exists or names its backlog item.`,
+  `check-doc-commands: ${String(COVERED_DOCS.length)} document(s) clean — every \`pnpm\` command they name either exists or names its backlog item.`,
 );
