@@ -34,6 +34,131 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-22 — BL-083 The rule BL-082 turned on now has something asserting it stays on
+
+**Type:** chore
+**Phase:** 0
+**PR:** n/a (committed to `claude/sharp-lovelace-kq60c9`)
+**Time:** ~1h
+
+### What changed
+
+BL-082 removed `tools/**/*.ts` from `eslint.config.js`'s `disableTypeChecked`
+block and found six real errors doing it. Nothing stopped a later edit putting
+it back, and that failure is silent in the worst way: `pnpm lint` exits 0,
+`pnpm lint:rules` passes, `pnpm typecheck` passes, and the rules simply stop
+reporting.
+
+Three pieces. `tools/lint-typed-fixtures/floating-promise.ts` is a new fixture
+carrying one deliberate `@typescript-eslint/no-floating-promises` violation.
+The directory is added to ESLint's `ignores` so `pnpm lint` does not fail on
+it, and the `disableTypeChecked` block gains a comment saying the directory
+must never join it. `tools/check-type-aware-lint.test.ts` is the guard: three
+cases, run by `pnpm test`.
+
+### Why it was done this way
+
+**There are two fixture directories now, and they are exact opposites.**
+`tools/lint-fixtures/` is outside `tools/tsconfig.json` and inside the
+`disableTypeChecked` block, deliberately (decision 0038) — its files are
+syntactic violations and several do not type-check on purpose.
+`tools/lint-typed-fixtures/` has to be inside the project and outside that
+block, because a fixture proving a *type-aware* rule fires needs a program
+behind it. Swap either and it breaks: with type-awareness on, `lint-fixtures/`
+does not **parse**; with it off, `lint-typed-fixtures/` reports nothing at all.
+Decision **0039** records this, and both config blocks now carry a comment
+pointing at the other.
+
+**The rule was chosen by running the control against the old state, not from
+its documentation.** With `tools/**/*.ts` restored to the block ESLint reports
+**nothing at all** on the fixture; with it removed the rule reports once and
+nothing else does. That is BL-082's Surprise 7 applied rather than admired — a
+control that fails for the wrong reason looks exactly like a control that
+works.
+
+**And the guard went into `pnpm test`, which is not where BL-083's own notes
+point.** They call `check-lint-rules.ts`'s `EXPECTATIONS` table "the natural
+home ... and already shaped like one", and it is shaped like one. It is still
+the wrong home: that file is run by `pnpm lint:rules`, which is **not in the
+verify block** — `AI_DEVELOPMENT_WORKFLOW.md` §6 is
+`pnpm lint && pnpm typecheck && pnpm test`, and `lint:rules` is named in the
+prose beneath it, exactly where `lint:docs` sits.
+`tools/check-lint-script.test.ts` had already rejected that position for
+BL-079's guard, in as many words. BL-083's first criterion allows either home,
+so this is a choice inside the criteria rather than a deviation from them.
+
+### Surprises
+
+1. **The task's own notes named the wrong home, and the repository had already
+   written down why — one directory away.** BL-083 was filed by the session
+   that had just finished BL-082, and its suggestion is a reasonable reading of
+   `EXPECTATIONS`' shape. But `tools/check-lint-script.test.ts`'s header
+   settles the question in a paragraph, for the sibling guard, against the
+   sibling script. **A filing's suggested approach is a hypothesis, and the
+   thing that refutes it is often already in the repository rather than in the
+   measurement** — the general form of the previous sessions' "a filed item's
+   predicted fix is a hypothesis".
+2. **A fixture's *shape* is an assertion and has to be one.** The third case
+   pins the fixture to exactly one finding. Without it the first case would
+   keep passing on a file whose deliberate violation had been replaced by an
+   unrelated one, which is the same "green for the wrong reason" failure as the
+   control in 1 — one level down, in the evidence rather than in the
+   instrument.
+3. **Two failure modes look identical from outside and had to be separated in
+   the message.** "The rule stopped reporting" and "the file stopped parsing"
+   both produce zero findings. The guard checks `fatal` first and says which it
+   saw, and the parse branch was verified by excluding the fixture from
+   `tools/tsconfig.json` — it fires with exactly the message it predicts.
+4. **`32_BACKLOG.md`'s "Next free ID" said BL-083 while BL-083 already
+   existed**, filed the day before. Corrected to BL-084 here rather than
+   filed, since it is one line of bookkeeping in a file this task was already
+   editing. It is worth a line because of what it is an instance of: **a
+   pointer that only goes stale when someone uses it correctly**, and nothing
+   checks it. The next `BL-###` would have collided, and the format line two
+   lines above says ids are "never reused". Not made a checked rule here —
+   that would be a fifth consecutive follow-up, and the handoff asked for the
+   chain to stop.
+5. **Not a surprise so much as a count worth writing down: BL-019 now has
+   three guards waiting on it.** Each of the three `tools/` guards declares the
+   same residual — it is reached through `test:node`'s glob and cannot notice
+   that glob changing. That was a small hole when one guard leaned on it.
+
+### Tests
+
+`tools/check-type-aware-lint.test.ts`, three cases, all run by `pnpm test`:
+the type-aware rule reports on the fixture; the syntactic rules report nothing
+on it (BL-083's third criterion, and load-bearing — those rules were never off
+over `tools/`, so a fixture tripping one could stay green through the exact
+regression this guards); and the fixture yields exactly one finding.
+
+**Verified able to fail, in three independent directions**, which is BL-083's
+second criterion done by doing it rather than by reading the config:
+
+| what was changed | result |
+|---|---|
+| `tools/**/*.ts` returned to `disableTypeChecked` | 1 pass / **2 fail** |
+| `tools/lint-typed-fixtures/**` added to that block | 1 pass / **2 fail** |
+| fixture excluded from `tools/tsconfig.json` | 1 pass / **2 fail**, via the parse branch |
+| nothing changed | **3 pass** / 0 fail |
+
+Suite **375 pass / 0 fail across 90 suites**, from a baseline of 372/90 —
++3 tests and +0 suites, which is exactly this file. `lint`, `lint:rules`,
+`lint:docs`, `typecheck` and `format:check` all clean. The
+`allocation.test.ts` 1-in-20 was green again: **eight** consecutive full runs.
+
+### Follow-ups
+
+None filed, and that is deliberate. The previous handoff said that if BL-083
+generated a sixth consecutive follow-up it should be filed and **not** taken,
+and flagged the chain (BL-079 → BL-080 → BL-081 → BL-082 → BL-083) as worth a
+human's attention. Nothing here needs a sixth: the residual this work leaves is
+`test:node`'s glob, which is already **BL-019**'s and is already declared by two
+older guards. **The chain ends here on its own rather than by being cut**, and
+the next session takes BL-078 or BL-008 because they are next in the file, not
+because this one was abandoned.
+
+---
+
 ## 2026-09-21 — BL-082 The type-aware rules come back on over `tools/`, and the exemption that had to stay
 
 **Type:** chore
