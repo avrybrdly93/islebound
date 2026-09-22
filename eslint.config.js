@@ -144,7 +144,22 @@ export default tseslint.config(
   {
     // Fixtures are deliberate violations; linting them would fail the build
     // that `tools/check-lint-rules.ts` exists to prove is working.
-    ignores: ['**/dist/**', '**/node_modules/**', 'tools/lint-fixtures/**'],
+    //
+    // `tools/lint-typed-fixtures/**` is the second fixture directory and the
+    // two are not interchangeable (BL-083). `lint-fixtures/` proves the four
+    // *syntactic* custom rules fire and is deliberately outside
+    // `tools/tsconfig.json` and inside the `disableTypeChecked` block below,
+    // so with type-awareness on its files do not even parse.
+    // `lint-typed-fixtures/` proves a *type-aware* rule fires and must
+    // therefore be the opposite on both counts: inside the project, outside
+    // that block. Both are ignored here for the same reason — a deliberate
+    // violation must not fail `pnpm lint`.
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      'tools/lint-fixtures/**',
+      'tools/lint-typed-fixtures/**',
+    ],
   },
 
   js.configs.recommended,
@@ -321,6 +336,14 @@ export default tseslint.config(
     //
     // So the original comment was half right, and the half that was right is
     // the half about the fixtures, not the half about the scripts.
+    //
+    // **`tools/lint-typed-fixtures/**` must never join this list (BL-083).**
+    // That directory exists to prove the type-aware rules still report over
+    // `tools/`, so silencing them there silences the guard.
+    // `tools/check-type-aware-lint.test.ts` fails if either that entry appears
+    // or `tools/**/*.ts` returns, and it is run by `pnpm test`. Verified by
+    // doing it: with `tools/**/*.ts` in this list, ESLint reports **nothing**
+    // at all on the fixture.
     files: ['**/*.js', '**/*.mjs', '**/*.cjs', 'tools/lint-fixtures/**'],
     extends: [tseslint.configs.disableTypeChecked],
   },
