@@ -144,7 +144,30 @@ export default tseslint.config(
   {
     // Fixtures are deliberate violations; linting them would fail the build
     // that `tools/check-lint-rules.ts` exists to prove is working.
-    ignores: ['**/dist/**', '**/node_modules/**', 'tools/lint-fixtures/**'],
+    //
+    // **The two fixture directories are not interchangeable, and confusing
+    // them undoes BL-082 and BL-083 at once.** Both are ignored here, and that
+    // is the only thing they have in common:
+    //
+    //   * `tools/lint-fixtures/**` is ALSO in the `disableTypeChecked` block
+    //     far below and is OUTSIDE `tools/tsconfig.json`'s `include`. It has
+    //     to be: its fixtures prove the four *syntactic* custom rules fire,
+    //     and under type-aware settings the project service cannot resolve
+    //     them and every one fails to parse.
+    //   * `tools/type-aware-fixtures/**` is in NEITHER — it is inside
+    //     `tools/tsconfig.json`'s `include` and type-aware rules are on over
+    //     it, because its whole job is to prove that they are (BL-083).
+    //
+    // So if you are adding a fixture, the question is which rule it proves.
+    // A syntactic one goes left; a type-aware one goes right. Putting a
+    // type-aware fixture in the left directory makes it report nothing, and
+    // `tools/check-lint-rules.ts` will tell you so.
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      'tools/lint-fixtures/**',
+      'tools/type-aware-fixtures/**',
+    ],
   },
 
   js.configs.recommended,

@@ -1,9 +1,11 @@
-// Proves the custom lint rules of BL-002 actually fire.
+// Proves the custom lint rules of BL-002 actually fire, and that the
+// type-aware rules are still on over `tools/` (BL-083).
 //
 // Owns: the "a deliberate violation of each custom rule is caught" half of
-// BL-002's acceptance criteria.
-// Reads: `tools/lint-fixtures/*`, and the real `eslint.config.js` — the point
-// is to test the config the repository actually uses, not a copy of it.
+// BL-002's acceptance criteria, and BL-083's first criterion.
+// Reads: `tools/lint-fixtures/*`, `tools/type-aware-fixtures/*`, and the real
+// `eslint.config.js` — the point is to test the config the repository actually
+// uses, not a copy of it.
 // Writes: nothing. Exits non-zero on the first unmet expectation.
 //
 // Why a script and not a test: `pnpm test` does not exist yet (the Vitest
@@ -62,6 +64,32 @@ const EXPECTATIONS: readonly Expectation[] = [
     // a selector list that quietly lost one of them.
     atLeast: 4,
     guards: 'the frame budget: a per-frame allocation is a GC pause the player feels',
+  },
+  {
+    // BL-083. Not one of BL-002's custom rules: this row asserts that the
+    // type-aware rule *family* is switched on over `tools/`, which BL-082
+    // turned back on and nothing asserted.
+    //
+    // THE RULE ID IS THE ASSERTION, AND THAT IS WHY IT IS KEYED ON ONE. The
+    // regression is `tools/**/*.ts` returning to `eslint.config.js`'s
+    // `disableTypeChecked` block, which is silent in the worst way: `pnpm
+    // lint`, `pnpm typecheck` and `pnpm lint:rules`'s other four rows all stay
+    // green while a whole class of rule stops reporting. `no-unnecessary-
+    // condition` cannot be decided from syntax — it needs to know that
+    // `value` is a `string` — so a syntactic rule reporting on the same
+    // fixture cannot satisfy this row, which is BL-083's third criterion.
+    //
+    // Measured under the regression rather than reasoned about: with
+    // `tools/**/*.ts` put back in the block, this row reports 0 and the four
+    // above stay green. See `34_DEVELOPMENT_LOG.md` 2026-09-23.
+    fixture: 'tools/type-aware-fixtures/unnecessary-condition.ts',
+    ruleId: '@typescript-eslint/no-unnecessary-condition',
+    messageIncludes: 'Unnecessary conditional',
+    atLeast: 1,
+    guards:
+      'every type-aware lint rule over tools/: if this stops reporting, the rules that need type ' +
+      'information have silently switched off across the directory every test run loads through, ' +
+      'and no other gate can see it',
   },
 ];
 
