@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-083**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-084**.
 
 **Task format:**
 
@@ -39,7 +39,11 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-_Nothing in progress._
+### BL-083 — Nothing asserts that the type-aware lint rules stay on over `tools/`
+
+Claimed 2026-09-23. The full item stays in its Ready position below until it is
+moved to Done; this block is the pointer `AI_DEVELOPMENT_WORKFLOW.md` §2 asks
+for.
 
 ## Ready — Phase 0: Foundation
 
