@@ -34,6 +34,105 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-23 — BL-083 A fixture directory that is the inverse of the other one on exactly one axis
+
+**Type:** chore
+**Phase:** 0
+**PR:** landed directly on `main` (this repository has no CI yet — BL-019)
+**Time:** ~1h
+
+### What changed
+
+BL-082 switched the type-aware lint rules back on over `tools/` and nothing
+stopped a later edit switching them off again. This adds the thing that
+notices. `tools/type-aware-fixtures/unnecessary-condition.ts` is a deliberate
+`@typescript-eslint/no-unnecessary-condition` violation, and a fifth row in
+`tools/check-lint-rules.ts`'s `EXPECTATIONS` asserts that ESLint reports it.
+`eslint.config.js` gains the directory in its `ignores` and a comment at the
+top saying how the two fixture directories differ. No production code was
+touched; the suite is unchanged at 372/90 and `pnpm lint:rules` went from four
+fixtures caught to five.
+
+### Why it was done this way
+
+**The fixture could not go in `tools/lint-fixtures/`, and BL-082 had already
+measured why.** That directory is in the `disableTypeChecked` block and outside
+`tools/tsconfig.json`'s `include`, both deliberately (decision 0038): its
+fixtures prove the four *syntactic* rules fire, and under type-aware settings
+the project service cannot resolve them, so every one fails to parse. A
+type-aware fixture there would report nothing. The new directory is that one
+inverted on exactly one axis — in ESLint's `ignores`, and in **neither** the
+`disableTypeChecked` block nor the tsconfig's `exclude`.
+
+**The assertion is keyed on the rule id rather than the message, and that is
+the load-bearing choice.** A fixture is only evidence if nothing else can
+satisfy the expectation. `no-unnecessary-condition` is undecidable from syntax
+— it has to know that `value` is a `string` — so a syntactic rule reporting on
+the same file cannot stand in for it, which is the third acceptance criterion.
+That was then measured rather than left as a design argument: under the
+restored regression ESLint reports **zero messages of any kind** on the
+fixture, so there is nothing available to mask it.
+
+**Chaining `pnpm lint:rules` into `pnpm lint` was the obvious placement and was
+rejected on a finding, not on taste.** It is exactly how decisions 0033 and
+0035 made `format:check` unskippable. But BL-079's finding 1 is that a guard
+cannot live inside the thing it guards, and `lint:rules` exists to catch a
+broken `eslint.config.js` — the edit it guards against would take the guard
+down with it. That leaves a real exposure, which is filed as **BL-084** rather
+than waved away: nothing automatic runs `pnpm lint:rules` at all.
+
+### Surprises
+
+1. **The control BL-082 recorded as a miss was not the rule's fault — it was
+   the violation's shape.** That session tried a `no-unnecessary-condition`
+   probe, got the stylistic `no-inferrable-types` instead, and correctly
+   counted it as proving nothing about type-awareness. The same rule works
+   perfectly here. The difference is that an annotated initializer attracts a
+   stylistic rule first, while a comparison against `undefined` on a
+   non-nullable type attracts only the type-aware one. **A control that fails
+   for the wrong reason is fixed by changing the probe, not by abandoning the
+   rule** — and BL-082's own carried-forward finding 7 is what made this worth
+   re-testing instead of accepting.
+2. **The predicted configuration change was zero, for the third consecutive
+   item.** BL-083's notes and this session's plan both expected
+   `tools/tsconfig.json` to need editing so the new directory would be inside a
+   project. It did not: `include` is already `"**/*.ts"` and only
+   `lint-fixtures` is excluded, so the directory is type-checked by
+   construction. 0037 and 0038 each found the same thing, and the lesson is
+   0037's own — **rank an option by what it touches, and find out by running
+   it** — now with three instances behind it.
+3. **The regression is even quieter than the filing said.** BL-083 predicted
+   `pnpm lint`, `pnpm typecheck` and `pnpm lint:rules` would all stay green.
+   Measured: `pnpm lint` exit 0, `pnpm typecheck` exit 0, `pnpm test` **372 pass
+   / 0 fail**, and `lint:rules`' four *existing* rows green — only the new
+   fifth row goes red. That last detail matters in the other direction too: the
+   failure is **attributable**, not a whole-file collapse of the kind BL-082
+   saw when the fixtures stopped parsing.
+
+### Tests
+
+No `pnpm test` case was added, and the suite is unchanged at **372 pass / 0
+fail across 90 suites**. The assertion is `pnpm lint:rules`'s fifth
+expectation, which the task's first acceptance criterion names as an
+acceptable carrier alongside `pnpm test`. It protects the whole type-aware rule
+family over `tools/` — four scripts and two test files — against the one edit
+that would silence it, and it is known to be able to fail: with `tools/**/*.ts`
+returned to the `disableTypeChecked` block the row reports 0 and the script
+exits 1; reverted, 5/5.
+
+`lint`, `typecheck`, `test`, `lint:rules` and `lint:docs` all clean. `pnpm sim`
+and `pnpm check:bundle` still do not exist (BL-014, BL-018), as expected in
+Phase 0.
+
+### Follow-ups
+
+- **BL-084** — nothing automatic runs `pnpm lint:rules`, so all five of its
+  assertions depend on a session typing it. **This is the sixth consecutive
+  session to file the follow-up of the session before, and the previous
+  handoff's standing advice applies: file it and take BL-078 or BL-008
+  instead.** Phase 0's feature items have not moved in six sessions. The item
+  itself depends on BL-019 rather than racing it, because CI makes it moot.
+
 ## 2026-09-21 — BL-082 The type-aware rules come back on over `tools/`, and the exemption that had to stay
 
 **Type:** chore
