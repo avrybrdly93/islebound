@@ -4,76 +4,150 @@
 
 ---
 
-## Status: IN_PROGRESS — BL-083
+## Status: IDLE
 
-**Nothing asserts that the type-aware lint rules stay on over `tools/`.**
-Claimed 2026-09-23. Phase 0 · Size S · Depends on BL-082 · Docs read: 06, 07,
-04, 05, plus `35_AI_AGENT_RULES.md` and the workflow.
+No task in progress. **BL-083 is complete** (2026-09-23).
 
-It is the topmost unblocked Ready item. BL-056 is Phase 1; BL-067 is skipped on
-its own instruction (`23_SAVE_SYSTEM.md` still defines no `EntitySave`,
-re-checked 2026-09-23 and unchanged). The previous handoff flagged that taking
-this makes **five consecutive sessions on the follow-up of the session before**
-and asked the next agent to consider not taking it — it also said, in the same
-paragraph, that the decision belongs to a human reordering Ready and that the
-paragraph is a flag rather than a decision taken on their behalf. Ready was not
-reordered, so the process wins and the item is taken. **The flag is repeated at
-the bottom of this file, sharpened, because it is now about the sixth.**
+Something now asserts that the type-aware lint rules stay on over `tools/`.
+`34_DEVELOPMENT_LOG.md` 2026-09-23 and decision **0039** carry the detail; its
+**Surprises 1 and 3** are the ones worth reading.
 
-## Baseline, measured this session before any edit
+**What landed:** `tools/type-aware-fixtures/unnecessary-condition.ts`, a fifth
+row in `tools/check-lint-rules.ts`'s `EXPECTATIONS`, and the directory added to
+`eslint.config.js`'s `ignores` with a comment at the top saying how the two
+fixture directories differ. No production code touched. `pnpm lint:rules` went
+**4 → 5 fixtures caught**; the suite is unchanged at **372 pass / 0 fail across
+90 suites**, which is why BL-084 exists.
 
-`pnpm install --frozen-lockfile` first — `node_modules` arrived absent **again**,
-eighth session running. Then all five gates green:
+**The thing that will bite the next person who touches that block:** there are
+now **two** fixture directories and they are exempt in opposite ways.
+`tools/lint-fixtures/**` is in `ignores` **and** in the `disableTypeChecked`
+block **and** outside `tools/tsconfig.json` — it must stay all three, or its
+files fail to parse and the four syntactic rules report nothing (BL-082 measured
+that).  `tools/type-aware-fixtures/**` is in `ignores` **only** — put it in
+either of the other two and its rule reports nothing instead. The top of
+`eslint.config.js` says which is which and how to choose; read it before adding
+a fixture.
 
-| gate | result |
-|---|---|
-| `pnpm lint` (`eslint .` then `prettier --check .`) | clean |
-| `pnpm typecheck` | clean |
-| `pnpm test` | **372 pass / 0 fail across 90 suites** |
-| `pnpm lint:rules` | 4/4 fixtures caught |
-| `pnpm lint:docs` | clean |
+`lint`, `typecheck`, `test`, `lint:rules` and `lint:docs` all clean.
 
-`pnpm sim` and `pnpm check:bundle` still do not exist (BL-014, BL-018), which is
-expected in Phase 0.
+## Next action for an agent
 
-## The plan (written before the first line of code)
+**Read `32_BACKLOG.md` in its own order, do not trust this list.** But read the
+paragraph after it before you choose, because this is the sixth time.
 
-1. **New fixture directory `tools/type-aware-fixtures/`**, holding one file with
-   a deliberate violation of a rule that *needs type information*. It must be
-   **inside** `tools/tsconfig.json`'s `include` — which `"**/*.ts"` already
-   does, since only `lint-fixtures` is excluded — so the project service can
-   resolve it, and it must **type-check cleanly**: the fixture is a lint
-   violation, not a type error, or `pnpm typecheck` goes red for the wrong
-   reason.
-2. **Add that directory to `eslint.config.js`'s `ignores`**, so `pnpm lint`
-   stays green, with a comment saying why it is *not* in the
-   `disableTypeChecked` block that `tools/lint-fixtures/**` is in. Those two
-   directories differ in exactly the way this task is about, and a reader who
-   confuses them will undo it.
-3. **One new row in `tools/check-lint-rules.ts`'s `EXPECTATIONS`.** The table is
-   already shaped for it and the script already filters by `ruleId`, which is
-   what satisfies the third acceptance criterion: a syntactic rule reporting on
-   the same file cannot satisfy a row keyed to a type-aware `ruleId`.
-4. **Control, by doing it rather than by reading the config** (criterion 2):
-   put `tools/**/*.ts` back into the `disableTypeChecked` block, run
-   `pnpm lint:rules`, and confirm it goes red **on the new row specifically**
-   while the four existing rows stay green. Then revert and confirm green.
-5. **Second control, from BL-082's Surprise 7**: check that the new row's rule
-   was genuinely off under the old state rather than merely absent — a control
-   that fails for the wrong reason looks exactly like one that works.
-6. Full gate run, then `32` / `33` / `34`, and `40` only if the choice turns out
-   to be architecturally visible.
+- **BL-056** is still **Phase 1** — not a candidate under phase discipline.
+  Twenty-fourth session running.
+- **BL-067** is still the one to skip, **on its own instruction** rather than on
+  your judgement: `23_SAVE_SYSTEM.md` mentions `EntitySave` exactly once (§2) and
+  defines it nowhere, so there is still no component-level format for its first
+  criterion to presume. Re-checked 2026-09-23 — unchanged.
+- **BL-084** is new this session and is BL-083's own follow-up. **Six
+  consecutive sessions of that pattern. See below.**
+- **BL-078** is the sparse-allocator blind spot, an M, and the warning about it
+  still stands in full (see below).
+- **BL-008** (fixed-timestep game loop) is the first substantial feature item.
 
-## Read this before taking whatever comes next
+## Do not take BL-084. Take BL-078 or BL-008.
 
-Closing BL-083 makes **five consecutive sessions** spent on the follow-up of
-the session before (BL-079 → BL-080 → BL-081 → BL-082 → BL-083). Each was a
-real defect and each closed properly, so no individual choice was wrong, and
-the previous handoff already said so. **If this session files a sixth
-follow-up, the previous handoff's advice was to strongly consider filing it and
-taking BL-078 or BL-008 instead — that advice now applies to you.** Phase 0's
-feature items have not moved in five sessions.
+This is not a suggestion this session invented; it is the previous handoff's
+own standing instruction, and its condition has now been met. It said: *if it
+generates a sixth follow-up, strongly consider filing that one and taking
+BL-078 or BL-008 instead.* BL-083 generated exactly that sixth follow-up
+(BL-079 → BL-080 → BL-081 → BL-082 → BL-083 → BL-084), so the instruction
+fires.
+
+Every one of those six was a real defect and every one closed properly, so no
+individual choice was wrong — which is precisely why the chain is hard to stop
+one item at a time. **Phase 0's feature items have not moved in six sessions.**
+
+**BL-084 is also the one follow-up in the chain that is genuinely fine to
+leave.** It depends on **BL-019** (CI pipeline) rather than racing it, because
+CI can run every gate by name and makes the item moot. Two of its three obvious
+answers are already rejected *with measured reasons* in its notes, so whoever
+does take it starts from the third rather than from scratch.
+
+If you take BL-084 anyway, do it knowing that is a choice against this
+paragraph, and say so in `34`.
+
+## If you take BL-078, read the harness's options table before choosing an axis
+
+Unchanged from the previous handoff and still accurate. BL-078 is the blind spot
+BL-074 deliberately left: the boundary separates "allocates once per call" from
+"one stray sample" but **not** from "allocates once per thousand calls", which
+reads 4224–11 648 against a 4096 bound.
+
+The trap is that it looks like a constant to retune and is not. **Raising
+`MAX_STRAY_SAMPLES` moves the boundary the wrong way, and lowering it re-creates
+BL-074.** It needs a different instrument, and the two obvious axes — a longer
+window and a finer `samplingInterval` — both have measured failure modes already
+recorded in `allocationHarness.ts`: at interval 16 an allocation-free operation
+read 904 bytes where 64–8192 all read exactly 0, and a warm-up of 200 000 made
+the **control** read 0 in one pass of three. There is also no room above: the gap
+assertion caps the allowance at **6** intervals on this container, measured, so
+the boundary cannot simply be moved up.
+
+Note `allocationHarness.ts` sits at **496 of its 500 allowed lines** (decision
+0034), so whatever BL-078 adds needs a seam rather than a paragraph.
+
+## Before you trust anything below, install
+
+`pnpm install --frozen-lockfile` first. This container arrived with
+`node_modules` absent **again** — eighth session running — and the first
+`pnpm lint && pnpm typecheck && pnpm test` without it fails with
+`ERR_MODULE_NOT_FOUND`, which reads exactly like a broken tree and is not one.
+After installing, the baseline this session measured was 372/90, matching the
+previous session's close-out on every count; it closed at 372/90. No lockfile
+change this session.
 
 ## What is red
 
-Nothing, as of the baseline above.
+Nothing.
+
+The **`allocation.test.ts` 1-in-20 remains fixed rather than mitigated** —
+BL-074's allowance of four sampling intervals. Green again this session, eight
+consecutive full runs now. **If it does go red, the number in the message is the
+thing to read**: under 4096 is a new phenomenon, well over it is a real
+allocation.
+
+## Eight things carried forward that a later session should not rediscover
+
+1. **A guard cannot live inside the thing it guards.** BL-079's finding, and it
+   decided a real question again this session: chaining `pnpm lint:rules` into
+   `pnpm lint` is exactly how 0033 and 0035 made `format:check` unskippable,
+   and it is wrong here, because `lint:rules` exists to catch a broken
+   `eslint.config.js` and the edit it guards against would delete the guard
+   with it. **Before choosing where a check lives, ask what the change you fear
+   would do to the check itself.**
+2. **This repository keeps producing one defect: a rule it states and does not
+   check.** BL-077, BL-079, BL-080, BL-081, BL-082, BL-083, and now **BL-084 (an
+   assertion nothing runs)**, plus decision 0029's fourteen unchecked soft-limit
+   breaches before them. **Seven sessions running.** When you next write a rule
+   down, write down what fails when it is broken — and then ask what runs *that*.
+3. **A green run of a checker does not verify the checker.** After wiring any new
+   gate, break something once. Applied again this session.
+4. **A session's report of a known defect's extent is only as good as the gate
+   that measures it** (BL-077). "Unchanged" and "I did not look" are
+   indistinguishable, including to the session writing it.
+5. **A predicted trap is worth checking even when the answer is "not there"**
+   (BL-080).
+6. **Rank an option by what it touches, not by how large it sounds — and find
+   out by running it.** BL-081's finding, and **this is now the third
+   consecutive item whose predicted configuration change turned out to be
+   zero**: `tools/tsconfig.json` needed no edit for the new fixture directory,
+   because its `include` is already `"**/*.ts"`.
+7. **A control has to be checked against the thing it is controlling for, not
+   merely observed to fail** (BL-082). **Sharpened this session, and it is the
+   most useful thing here:** BL-082 recorded a failed `no-unnecessary-condition`
+   probe as a miss, because it reported the stylistic `no-inferrable-types`
+   instead. The rule was never the problem — **the shape of the violation was**.
+   An annotated initializer attracts a stylistic rule first; a comparison
+   against `undefined` on a non-nullable type attracts only the type-aware one.
+   **A control that fails for the wrong reason is fixed by changing the probe,
+   not by abandoning the rule.**
+8. **When one glob covers two populations for one stated reason, check the
+   reason against each separately** (BL-082). The corollary that arrived this
+   session: once they *are* separate, say at the site which is which. There are
+   now two fixture directories with opposite exemptions, and the comment at the
+   top of `eslint.config.js` exists so nobody has to derive that from two
+   backlog items and a decision entry.
