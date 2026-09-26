@@ -39,7 +39,8 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-_Nothing in progress._
+### BL-078 — The allocation boundary cannot see an operation that allocates rarely
+- Started 2026-09-26. Taken as the topmost unblocked Phase-0 item; see `33_CURRENT_TASK.md` for the pre-code measurements, the plan, and why the item above it were each skipped on their own terms.
 
 ## Ready — Phase 0: Foundation
 

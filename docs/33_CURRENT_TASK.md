@@ -4,7 +4,94 @@
 
 ---
 
-## Status: IDLE
+## Status: IN_PROGRESS — BL-078
+
+**The allocation boundary cannot see an operation that allocates rarely.**
+Started 2026-09-26. Phase 0 · Size M · Depends on BL-074 (done) · Docs to read: 29.
+
+Taken as the **topmost unblocked Phase-0 task**, per
+`AI_DEVELOPMENT_WORKFLOW.md` §2 — not because the previous handoff nominated it.
+Above it in `32`'s Ready list: **BL-056** is Phase 1; **BL-067** says in its own
+notes that it must not be taken before `23_SAVE_SYSTEM.md` has a shape, and `23`
+still mentions `EntitySave` once and defines it nowhere (re-checked); **BL-084**
+depends on BL-019. BL-078 is the first item with nothing in front of it.
+
+### Acceptance criteria (from `32`)
+
+1. A sparse allocator — one object per 1000 calls — is caught on **every** run of
+   20, not most.
+2. That must **not** reintroduce BL-074: a single stray sample must still not
+   fail an operation whose true reading is zero.
+3. The per-call control still passes its gap assertion, so the instrument is
+   still known to resolve a real allocator.
+
+### What the measurements say, taken before any code was written
+
+Measured on this container with the existing harness and a fixture that
+allocates one three-field object every `period` calls, 20 runs per figure:
+
+| | interval 1024 (today's default) | interval 256 |
+|---|---|---|
+| sparse 1/1000, in sampling intervals | 6.3 – 22.0 | **58.9 – 79.1** |
+| sparse 1/1000, min ÷ allowance | **1.6×** | **14.7×** |
+| allocation-free | 0 in 20 of 20 | 0 in 20 of 20 |
+| per-call control, min ÷ allowance | 19.6× | **87.3×** |
+| cost per measurement | 72 ms | 178 ms |
+
+**The mechanism, which is the non-obvious part and is why this is not
+"retuning a constant".** A stray is *one sample*, so its weight in bytes is one
+sampling interval, and the allowance — four intervals — is four samples at any
+interval. The sparse allocator's reading in **bytes** is very nearly
+*independent* of the interval (≈18 kB at 1024, 256 and 64 alike; the profiler's
+attribution saturates well below true volume). So making the interval finer
+leaves the stray tolerance at exactly four samples while multiplying the sparse
+allocator's sample count by the same factor. Interval 256 buys a 4× wider gap
+and costs 106 ms a measurement; `MAX_STRAY_SAMPLES` is **not** touched, which is
+how criterion 2 is met by construction rather than by re-measurement.
+
+**Why not the two axes the item warns about.** `MAX_STRAY_SAMPLES` is untouched,
+as the item requires. A longer *window* was measured too — 1 000 000 iterations
+at interval 1024 reaches a 19.9× margin but costs **257 ms** a measurement,
+worse than interval 256 for a similar gap, and at that setting the control and
+the sparse case overlap (73–102 against 80–94 intervals), so the instrument has
+saturated. The item's recorded warning about a finer interval is about **16**,
+where an allocation-free operation read 904 bytes; the harness's own options
+table records 64, 256, 1024 and 8192 all reading exactly **0**, so 256 is inside
+the measured-safe band and 16 is not.
+
+### Plan
+
+1. **New file** `core/math/allocationControls.ts` for the fixtures and the
+   sparse assertion. `allocationHarness.ts` is at **496 of its 500 allowed
+   lines** (decision 0034), so this needs a seam, not a paragraph. The per-call
+   and sparse fixtures come from **one** factory differing only in period —
+   otherwise "the sparse one reads less" could be a property of the fixture
+   rather than of the sparsity.
+2. `assertInstrumentResolvesSparseAllocator`, the sparse analogue of
+   `assertInstrumentResolvesControl`: the instrument must resolve a 1-in-1000
+   allocator to a stated multiple of the allowance, asserted **in the same
+   process, in the same run**, so criterion 1 is a test and not a measurement
+   somebody once took.
+3. Change `DEFAULT_SAMPLING_INTERVAL` to 256 and rewrite the harness's "the
+   limit this does not clear" section, which becomes false.
+4. **Convert the pinned stray regression from bytes to sampling intervals.**
+   `allocation.test.ts` pins BL-065's real failures as `1344` and `1040` *bytes*,
+   which is only meaningful at interval 1024 — they were 1.3 and 1.0 **samples**.
+   At 256 the byte form asserts the wrong thing and goes red, which is the
+   correct outcome and the unit is the bug.
+5. Run the full suite repeatedly at the new interval: the risk this change
+   carries is an allocation-free operation reading non-zero under real
+   full-suite load, which is BL-074's failure and is not visible in isolation.
+6. Check the suite's wall-clock cost and say what it became.
+
+### Not in scope
+
+Catching **1 in 10 000**. At interval 256 it reads 4.9–9.8 intervals against an
+allowance of 4, so it would be caught on most runs and not all — the same
+"most, not every" that BL-078 exists to end, one decade further out. Criterion 1
+names 1-in-1000; a follow-up gets filed rather than quietly attempted.
+
+## Previous status (BL-083, closed 2026-09-23)
 
 No task in progress. **BL-083 is complete** (2026-09-23).
 
