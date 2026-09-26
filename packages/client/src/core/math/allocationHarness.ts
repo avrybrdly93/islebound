@@ -190,7 +190,8 @@ export interface AttributedAllocation {
 export interface AttributedAllocationOptions {
   readonly iterations?: number;
   /**
-   * Bytes between profiler samples. Default 1024.
+   * Bytes between profiler samples. Default {@link DEFAULT_SAMPLING_INTERVAL},
+   * **256 since BL-078** and 1024 before it.
    *
    * **Both directions of getting this wrong were measured**, which is why it is
    * documented rather than merely defaulted. At 65536 the control itself reads
@@ -209,6 +210,10 @@ export interface AttributedAllocationOptions {
    * | 1024 | 90144 | 0 |
    * | 8192 | 65952 | 0 |
    * | 65536 | 0 | 0 |
+   *
+   * **BL-078 moved the default 1024 → 256, and not because finer is more
+   * accurate — `allocationControls.ts`'s header has the mechanism. Coarsening it
+   * back returns a 1-in-1000 allocator to "most runs, not all".**
    */
   readonly samplingInterval?: number;
   /**
@@ -297,7 +302,7 @@ export async function measureAttributedAllocation(
   options: AttributedAllocationOptions = {},
 ): Promise<AttributedAllocation> {
   const iterations = options.iterations ?? 200_000;
-  const samplingInterval = options.samplingInterval ?? 1_024;
+  const samplingInterval = options.samplingInterval ?? DEFAULT_SAMPLING_INTERVAL;
   const warmup = options.warmup ?? 50_000;
   const repeats = options.repeats ?? 3;
 
@@ -380,8 +385,8 @@ function runMeasuredLoop(op: (i: number) => void, iterations: number): void {
   for (let i = 0; i < iterations; i++) op(i);
 }
 
-/** The default {@link AttributedAllocationOptions.samplingInterval}, exported so the allowance below is expressed in the same unit the instrument reports in. */
-export const DEFAULT_SAMPLING_INTERVAL = 1_024;
+/** The default {@link AttributedAllocationOptions.samplingInterval}, exported so the allowance below is expressed in the same unit the instrument reports in. **256 since BL-078** (1024 before it, and 178 ms a measurement against 72 ms); that option's doc says why. */
+export const DEFAULT_SAMPLING_INTERVAL = 256;
 
 /** Stray samples tolerated before an operation is called an allocator. Four; see {@link strayAllocationAllowance} for where the number comes from. */
 export const MAX_STRAY_SAMPLES = 4;
@@ -423,18 +428,14 @@ export const MAX_STRAY_SAMPLES = 4;
  * boundary in a gap, which is what the old one was called and was not.
  * Decision **0034** carries the full tables.
  *
- * ## The limit this does not clear, stated rather than discovered later
+ * ## The sparse case, closed by BL-078 without touching this number
  *
- * It separates "allocates once per call" from "one stray sample
- * landed in these frames", which is what BL-074's first criterion asks for. It
- * does **not** separate "once per call" from "once per thousand calls": that
- * case reads 4224–11 648, whose bottom is a hair above four intervals, so it
- * would be caught on most runs and not all. Such an operation still violates
- * `CLAUDE.md`'s per-frame rule and this instrument will not reliably say so.
- * Raising `MAX_STRAY_SAMPLES` moves the boundary the wrong way and lowering it
- * re-creates BL-074; catching the sparse case needs a different instrument (a
- * longer window or a finer interval, both of which the options table above
- * shows have their own failure modes). Filed as **BL-078**.
+ * This separates "once per call" from "one stray sample landed in these frames",
+ * which is BL-074's first criterion. It did **not** separate "once per call" from
+ * "once per thousand calls", and raising `MAX_STRAY_SAMPLES` moves the boundary
+ * the wrong way while lowering it re-creates BL-074 — so BL-078's fix came from
+ * the sampling interval and this number is unchanged. `allocationControls.ts`'s
+ * header carries the mechanism, the readings, and the decade that is still open.
  *
  * @param samplingInterval The interval the measurement was taken at.
  * @param maxStraySamples Stray samples tolerated; see above.

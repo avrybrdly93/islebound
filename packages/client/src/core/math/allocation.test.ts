@@ -11,6 +11,11 @@ import {
   strayAllocationAllowance,
 } from '@core/math/allocationHarness';
 import {
+  assertInstrumentResolvesSparseAllocator,
+  createAllocator,
+  SPARSE_ALLOCATION_PERIOD,
+} from '@core/math/allocationControls';
+import {
   aabb,
   closestPoint,
   distanceSqToPoint,
@@ -118,6 +123,13 @@ const allowance = strayAllocationAllowance();
 /** The control's reading, kept so the case below can assert the gap it establishes. */
 let controlBytes = Number.NaN;
 
+/**
+ * The **sparse** control's reading — one object per {@link SPARSE_ALLOCATION_PERIOD}
+ * calls (BL-078). Measured in the same process and the same run as the per-call
+ * control, for the same reason: a figure somebody measured once is not a
+ * property this suite can rely on.
+ */
+let sparseBytes = Number.NaN;
 
 describe('the allocation harness itself', () => {
   before(async () => {
@@ -132,6 +144,14 @@ describe('the allocation harness itself', () => {
     // per-call allocator to many times the allowance. Readings measured
     // 2026-09-12: 54912-67584 idle, 77280-101952 under contention.
     assertInstrumentResolvesControl(controlBytes, allowance);
+
+    // BL-078's control: the same allocator at a period of 1000. The per-call one
+    // above cannot speak for it -- until BL-078 an operation allocating this
+    // rarely read a hair above the allowance and so was caught on most runs and
+    // not all, which a green suite cannot be distinguished from.
+    const sparse = await measureAttributedAllocation(createAllocator(SPARSE_ALLOCATION_PERIOD));
+    sparseBytes = sparse.attributedBytes;
+    assertInstrumentResolvesSparseAllocator(sparseBytes, allowance);
   });
 
   it('detected the control allocation and established the gap around the allowance', () => {
