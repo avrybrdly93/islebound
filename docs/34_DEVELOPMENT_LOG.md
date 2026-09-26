@@ -34,6 +34,140 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-26 — BL-078 The sparse allocator, caught by moving the interval and not the boundary
+
+**Type:** fix
+**Phase:** 0
+**PR:** landed directly on `main` (this repository has no CI yet — BL-019)
+**Time:** ~2h
+
+### What changed
+
+`DEFAULT_SAMPLING_INTERVAL` goes from 1024 to 256, `MAX_STRAY_SAMPLES` stays at
+4, and a **second control** arrives: `core/math/allocationControls.ts` holds
+`createAllocator(period)`, `SPARSE_ALLOCATION_PERIOD`,
+`MIN_SPARSE_TO_ALLOWANCE_RATIO` and `assertInstrumentResolvesSparseAllocator`,
+with `allocationControls.test.ts` beside it. The sparse control is measured in
+the same process and the same run as the per-call one, in both
+`allocationControls.test.ts` and `allocation.test.ts`'s `before`.
+
+Decision **0040** carries the argument and the alternatives; this entry does not
+restate them. Two things belong here instead.
+
+**The mechanism, because "moved a constant" is what this looks like and is not
+what it is.** A stray sample weighs one sampling interval, so an allowance of
+four intervals is four *samples* at any interval whatsoever. The reading a sparse
+allocator produces in **bytes** is very nearly *independent* of the interval —
+about 18 kB at 1024, 256 and 64 alike — because the profiler's attribution
+saturates far below true allocated volume. So a finer interval multiplies the
+sparse allocator's **sample count** and leaves the stray tolerance exactly where
+BL-074 measured it. That is how criterion 2 is met **by construction**: the
+number BL-074 established was never touched, and a test asserts it stayed 4, so
+a later change cannot meet criterion 1 by widening the boundary instead.
+
+**The measurements, taken before any code was written**, 20 runs per figure:
+
+| | interval 1024 | interval 256 |
+|---|---|---|
+| sparse 1-in-1000, in intervals | 6.3 – 22.0 | **58.9 – 79.1** |
+| sparse 1-in-1000, min ÷ allowance | **1.6×** | **14.7×** |
+| allocation-free | 0 in 20 of 20 | 0 in 20 of 20 |
+| per-call control, min ÷ allowance | 19.6× | **87.3×** |
+| cost per measurement | 72 ms | 178 ms |
+
+Criterion 1 as the item words it — "caught on every run of 20, not most" — is
+**20 of 20 full-suite runs green**, each of which asserts the sparse control
+twice. Suite **372/90 → 381/91**, **3.96 s → 5.34 s**.
+
+### Surprises
+
+1. **BL-074's recorded figure for the sparse case does not reproduce here, and it
+   is louder rather than quieter.** The item and the harness both record 1 in
+   1000 reading **4224–11 648 bytes** (4.1–11.4 intervals) at interval 1024; the
+   same period measured on this container reads **6432–22 560** (6.3–22.0). The
+   directions matter: on the reference container the *minimum* sits below the
+   4096 allowance, so the case genuinely was "most runs, not all"; here it sat
+   above it in 20 of 20, which means **this container alone would have made the
+   defect look absent.** The 1-in-10 000 figure matches almost exactly (0–2.1
+   intervals here against 0–3.1 recorded), so this is not a wholesale
+   calibration difference. Two consequences: the fix was sized against the
+   *reference* figure rather than the local one, and anyone re-measuring should
+   expect the local reading to under-state the problem rather than over-state it.
+2. **The instrument saturates, and the longer-window axis hits that before it
+   hits a better boundary.** At 1 000 000 iterations and interval 1024 the
+   per-call control reads 73.3–101.6 intervals and 1-in-1000 reads 79.6–94.3 —
+   they **overlap**. The per-call case allocates a thousand times as often and
+   does not read a thousand times higher, or even higher at all. So "make the
+   window longer" does not merely cost more (257 ms a measurement against 178);
+   past some point it stops carrying information about volume, and a boundary
+   between two readings that overlap is not a boundary. This is the second
+   recorded instance of the harness's attribution being an order-of-magnitude
+   under-report rather than a measurement.
+3. **A reading pinned in bytes is pinned to an interval, and the test that broke
+   was right to break.** `allocation.test.ts` pinned BL-065's two real strays as
+   `1344` and `1040` *bytes*. Those were taken at interval 1024, where they are
+   1.3 and 1.0 **samples** — and a stray is one sample whatever the interval, so
+   intervals is the unit the invariant lives in. In byte form the assertion only
+   ever said anything at one interval: moving the default to 256 turned it into
+   "a stray five times larger than any observed must pass", and it failed. The
+   unit was the bug, and it was fixed in its own commit **before** the interval
+   moved, so that commit is green on the old interval and the failure never
+   appears in history.
+4. **Two lint rules made one bound unassertable, and the resolution changed the
+   test rather than the config.** `MIN_SPARSE_TO_ALLOWANCE_RATIO < 8` is foldable
+   by TypeScript, so BL-083's type-aware rules reject it as an unnecessary
+   condition — rightly: an assertion the compiler can prove is not an assertion
+   about anything that could change. Annotating the constant `: number` to widen
+   it is then rejected by `no-inferrable-types`. The bound is now asserted
+   **multiplied by the allowance**, which is un-foldable and is also the unit the
+   threshold is applied in. Worth recording because the first instinct is to
+   reach for a disable comment, and the honest fix made the assertion *better*
+   rather than merely legal. This is also BL-083's fixture earning its keep on
+   real code four days after it landed.
+5. **One control produced no failure, and it is recorded as a gap rather than
+   counted as a pass.** The harness documents that a warm-up of 200 000 made the
+   *control* read 0 in **one pass of three** — the dangerous direction, since a
+   real allocator then looks clean. Setting it left the suite **26/26 green**.
+   That is not evidence the risk is absent; it is the risk being intermittent, so
+   a single mutant run cannot demonstrate it either way, which is exactly why the
+   guard for it has to be non-flaky by design. Filed as **BL-086** with both
+   honest routes written down. Compare BL-082's recorded miss: a control that
+   fails for the wrong reason is fixed by changing the probe, but a control whose
+   target is a one-in-three event needs a different *kind* of check.
+
+### Tests
+
+- `packages/client/src/core/math/allocationControls.test.ts` — **9 cases**, new
+  file. Criterion 1 with its margin rather than its sign; criterion 2 (an
+  allocation-free operation still reads clean at the finer interval, which is the
+  direction the change carries risk in); criterion 3; the new guard's failing
+  direction; the sparse requirement's bounds; `createAllocator`'s period
+  validation; per-closure counters; both sinks non-zero so nothing measured was
+  dead code; and `MAX_STRAY_SAMPLES === 4`, which is where a later change meeting
+  criterion 1 by widening the boundary gets caught.
+- `allocation.test.ts` — the sparse assertion added to `before`, so every
+  "allocates nothing" result in that file now rests on a boundary known to see a
+  sparse allocator, not only a per-call one. The stray regression converted to
+  intervals.
+- **Eight controls, tree restored after each.** Coarsening the interval back to
+  1024 fails the sparse assertion **with its own diagnosis** (12 672 and 14 976
+  bytes against a required 16 384); 65536 fails 3; **16 fails 2 — the `vec3`
+  suites, the documented noise direction arriving exactly where the options table
+  said it would**; raising `MAX_STRAY_SAMPLES` to 64 fails 4; a sparse control
+  that allocates every call fails 2; one that never allocates fails 5; dropping
+  `keepAlive` fails 5; sharing one counter across allocators is rejected by
+  `pnpm typecheck`. The ninth is Surprise 5.
+
+### Follow-ups
+- **BL-085** — 1 in 10 000 is still caught on most runs and not all (4.9–9.8
+  intervals). Filed rather than attempted: the next factor of four is interval
+  64 at **384 ms** a measurement, about 12 s on a 5.3 s suite, so it is a trade
+  and not the same win again.
+- **BL-086** — nothing pins the warm-up, and Surprise 5 is why that is harder
+  than it sounds.
+
+---
+
 ## 2026-09-23 — BL-083 A fixture directory that is the inverse of the other one on exactly one axis
 
 **Type:** chore
