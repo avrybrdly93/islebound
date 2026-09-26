@@ -118,6 +118,7 @@ const allowance = strayAllocationAllowance();
 /** The control's reading, kept so the case below can assert the gap it establishes. */
 let controlBytes = Number.NaN;
 
+
 describe('the allocation harness itself', () => {
   before(async () => {
     // The control, and the case that gives every other assertion in this file
@@ -187,12 +188,26 @@ describe('the allocation harness itself', () => {
     //   BL-065: stepSpring3 attributed 1040 against an allowance of 718.08
     // Both are one sampling interval's worth -- a single stray sample -- and
     // both were inside a true reading of exactly 0. They must now pass.
-    for (const stray of [1024, 1040, 1344, 2048]) {
+    //
+    // PINNED IN SAMPLING INTERVALS, NOT IN BYTES, AND BL-078 IS WHY. Those two
+    // byte figures were taken at an interval of 1024, so `1344 <= allowance`
+    // only ever asserted anything at that interval; when BL-078 moved the
+    // default to 256 the byte form began asserting that a stray FIVE times
+    // larger than the one observed must pass, and failed. A stray is one sample
+    // whatever the interval, so the interval is the unit the invariant lives in
+    // and the byte figures are that unit times the interval they were taken at.
+    const STRAYS_IN_INTERVALS = [1, 1040 / 1024, 1344 / 1024, 2];
+    for (const strayIntervals of STRAYS_IN_INTERVALS) {
+      const stray = strayIntervals * DEFAULT_SAMPLING_INTERVAL;
       assert.ok(
         stray <= allowance,
-        `a stray of ${stray} bytes still fails (allowance ${allowance})`,
+        `a stray of ${strayIntervals} sampling intervals (${stray} bytes at the current ` +
+          `interval of ${DEFAULT_SAMPLING_INTERVAL}) still fails (allowance ${allowance})`,
       );
     }
+    // And the observed strays are still comfortably inside it rather than at its
+    // edge: the worst anyone has seen is 1.3 intervals against a bound of 4.
+    assert.ok(Math.max(...STRAYS_IN_INTERVALS) * 2 <= MAX_STRAY_SAMPLES);
     // And the old rule must be recorded as having failed them, so nobody
     // "simplifies" back to it: the allowances it produced on this machine.
     for (const oldAllowance of [635.12, 718.08]) {
