@@ -34,6 +34,147 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-27 — BL-008 The fixed-timestep loop, and the step the textbook accumulator loses
+
+**Type:** feature
+**Phase:** 0
+**PR:** landed directly on `main` (this repository has no CI yet — BL-019)
+**Time:** ~3h
+
+### What changed
+
+`core/Loop.ts` implements `04` §4.1: a 30 Hz simulation step, a five-step
+catch-up cap, a 0.25 s tab-switch clamp, an interpolation `alpha` in `[0, 1)`,
+and a `sim:timeDropped` event on its own bus. `core/browserFrameHost.ts` holds
+the two adapters that turn `performance.now` and `requestAnimationFrame` into
+the interfaces the loop takes. 27 cases across `Loop.test.ts` and
+`Loop.guards.test.ts`, on a `ManualHost` fixture the test drives by hand.
+Suite **381/90 → 408/97**; runtime unchanged at ~4.6 s. Nothing existing was
+touched — six new files, zero edits elsewhere.
+
+All three acceptance criteria are met and measured: three frame rates over the
+same simulated ten seconds return **300, 300 and 300** steps; the frame after a
+ten-second gap takes exactly five and the frame after *that* takes exactly one;
+and `sim:timeDropped` carries the seconds and both step counts, with a separate
+case pinning that it does **not** fire on a frame that stayed under the cap.
+
+### Why it was done this way
+
+Three choices are worth the words, and two of them are in `40`.
+
+**The loop imports nothing from `sim/` or `render/`.** `04` §4.1's sketch calls
+`world.step(DT)` and `renderer.render(world, acc / DT)` inline, and a literal
+transcription would make `core/Loop.ts` import both — against `04` §5's
+binding `core → (nothing)`. They are constructor arguments instead, so the loop
+never learns what it is stepping. That is also what makes the whole of §4.1
+testable without a world, a renderer or a browser.
+
+**The clock and the frame scheduler are injected.** Two of the three criteria
+are statements about time, and `pnpm test` is `node --test` with no DOM: there
+is no `requestAnimationFrame` to wait for, and `performance.now` advances at
+the speed of whatever container the suite lands on. Injection is the difference
+between a criterion that is checked and one that is asserted in a changelog.
+
+**The step budget is derived from an absolute time base rather than
+accumulated** — decision **0041**, and see *Surprises*.
+
+**`sim:timeDropped` is the loop's event, not the world's** — decision **0042**.
+Two routes to `world.events` are closed (`EventBus<M>`'s invariance, and
+`sim/events/` being a later item's design), but the reason that outlives both
+is that the event is a fact about the *host machine*. `04` §4.2 and Phase 7 both
+require the simulation's event stream to be reproducible; an event that a fast
+desktop never emits and a slow laptop does must not be in it.
+
+### Surprises
+
+**1. `04` §4.1's sketch is wrong in a way no single-frame-rate test can see,
+and criterion 1 is what caught it.** The accumulator form was implemented
+first, as written. Over ten seconds of exact frame timestamps it returns
+**299, 299 and 300** steps at 30, 60 and 144 fps, where the true answer is 300
+at all three. `DT` is 1/30, which binary64 cannot represent, and `acc += delta`
+adds one more inexact quantity per frame: 300 additions of `1000/30` ms sum to
+`9.999999999999991`, 600 of `1000/60` to `9.999999999999895`. **The drift is a
+function of the render rate**, which is exactly the property criterion 1
+forbids — and it is silent, because no cap is hit, no clamp fires and
+`sim:timeDropped` stays quiet. At an hour it is minutes of simulation time
+gone. `04` §4.2 rule 4 already states the mechanism — *"no floating-point
+accumulation across ticks where an integer would do"* — and scopes itself to
+component state. **The rule was right about the mechanism and did not happen to
+name the place.** The doc is not wrong, and it has not been edited: its code
+block says "shape, not final code" and this is what that sentence is for.
+
+**2. A surviving mutant twice turned out to be a fact about the fixture, not
+about the tests.** Eleven mutants; three survived a first pass. `start()`'s
+idempotence was **untestable**, because `ManualHost` held a single pending
+callback and a second `request` overwrote it — so the two chains of frames a
+non-idempotent `start` creates collapsed back into one inside the fixture, and
+the mutant passed every case. A real `requestAnimationFrame` queues each
+request and fires each once, and the fixture does now. **A fixture that is
+simpler than the thing it stands in for can make a real property unobservable,
+and the test still reads correct.**
+
+**3. A test can fail for the wrong reason and look like a finding.** The first
+backwards-timestamp case jumped the clock back by a second after a one-second
+forward frame — which trips the catch-up cap, so it failed on `droppedFrames`
+and said nothing about backwards clocks. Corrected to small deltas, it passed
+— and then the mutant that removed the compensation *also* passed, because a
+jump shorter than one step cannot discriminate: `floor(elapsed / DT) - steps`
+clamped at zero behaves identically either way. It is a **whole second
+backwards after two ordinary seconds** now, which stalls a naive loop for the
+thirty frames it takes to climb back. **Two wrong versions of one case, in
+opposite directions, and only the mutant found the second.**
+
+**4. Two counters that both mean "steps" have to agree about where zero is.**
+The budget is `floor(elapsed / DT) - stepsThisEpoch`, and the first draft used
+the cumulative `steps`. A restarted loop then took no step **ever again**: the
+epoch reset `elapsed` to zero while `steps` still held everything the loop had
+run, so the difference was permanently negative and the `Math.max(…, 0)` that
+exists to absorb float noise turned a dead loop into silence. The restart case
+found it. **A guard that floors a value at zero will hide an error of exactly
+the kind it was written to tolerate.**
+
+**5. `node_modules` was absent again — tenth session running.** As the previous
+handoff predicted; `pnpm install --frozen-lockfile` first, no lockfile change.
+The baseline afterwards was **381/91**, matching the previous session's
+close-out on every count.
+
+### Tests
+
+- `core/Loop.test.ts` — 15 cases: criterion 1 (three rates, asserted equal to
+  each other *and* to the exact answer), `DT` passed to every step, the first
+  frame taking no step, a sixty-second run staying exact, `alpha`'s range and
+  its 2:1 shape at 60 fps, criterion 3 and its negative, and the timing
+  counters' attribution.
+- `core/Loop.guards.test.ts` — 12 cases: criterion 2, the clamp's independence
+  from the gap's size, the guard-constants inequality that keeps the other
+  cases meaningful, a backwards clock, and the lifecycle (idempotent
+  `start`/`stop`, counters surviving a stop, a throwing callback not ending the
+  loop).
+- `core/Loop.testFixtures.ts` — the `ManualHost`. Timestamps are computed from
+  the frame index rather than accumulated, so the *harness* is exact and any
+  drift a test measures belongs to the loop. The first draft accumulated, and
+  the three rates then disagreed for a reason that had nothing to do with the
+  loop.
+- **Eleven mutants applied, run and reverted, every one failing at least one
+  case**: the accumulator form (2), no clamp (4), no cap (5), the measured
+  delta passed to `step` (1), the event fired every frame (1), a
+  non-idempotent `start` (1), the restart bug (1), a backwards timestamp
+  admitted (1), `stop` not cancelling (3), the first frame stepping against its
+  own timestamp (2), dropped time carried rather than discarded (1).
+
+### Follow-ups
+
+- **BL-087** — nothing asserts `core/Loop.ts` stays free of browser globals.
+  The ninth instance of this repository's recurring defect: a rule stated and
+  not checked. Worth collapsing into BL-017's `sim/` purity gate rather than
+  building a second.
+- **BL-088** — the loop is not wired into a composition root, so **every
+  criterion has been observed against a scripted clock and none against
+  `requestAnimationFrame`**. Depends on BL-011, which gives the root something
+  to draw.
+
+---
+
 ## 2026-09-26 — BL-078 The sparse allocator, caught by moving the interval and not the boundary
 
 **Type:** fix
