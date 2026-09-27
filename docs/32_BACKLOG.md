@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-087**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-089**.
 
 **Task format:**
 
@@ -39,9 +39,7 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-### BL-008 — Fixed-timestep game loop
-
-Claimed 2026-09-27. See `33_CURRENT_TASK.md` for the plan and the design decisions taken before the first line of code.
+_Nothing in progress._
 
 ## Ready — Phase 0: Foundation
 
@@ -172,6 +170,24 @@ Claimed 2026-09-27. See `33_CURRENT_TASK.md` for the plan and the design decisio
   - [ ] The check is not itself flaky — a guard that fails one run in three is worse than none, because it trains people to re-run
   - [ ] Whatever is chosen, say plainly whether it tests behaviour or only pins a constant
 - **Notes:** Filed 2026-09-26 by BL-078, as a gap its own controls found rather than as a prediction. **The difficulty is stated so nobody rediscovers it:** the documented failure is *one pass in three*, so a behavioural test for it is flaky by construction and a single mutant run cannot demonstrate it either way — which is precisely why BL-078's control came back green and was recorded as a miss rather than counted as a pass. Two routes, both honest: (a) assert the default constants (`warmup === 50_000`, and that 5000 and 200 000 are not it), which pins the value and tests no behaviour — say so if you take it; (b) make the *existing* `assertInstrumentResolvesControl` run over all `repeats` passes rather than over their minimum, so a control that reads 0 in any pass fails. (b) is the real fix and is the reason this is an S rather than a triviality: `attributedBytes` is already a minimum over passes, so the per-pass readings are discarded before any caller sees them, and exposing them is a change to `AttributedAllocation`. Note that (b) would also make BL-074's stray tolerance stricter, so it needs the 20-run check BL-078 used.
+
+### BL-087 — Nothing asserts that `core/Loop.ts` stays free of browser globals
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-008 · **Docs to read:** 04, 06, 29
+- **Description:** `Loop.ts`'s module comment claims it reads no clock and touches no DOM of its own, and BL-008 made that structurally true by moving the two adapters to `core/browserFrameHost.ts`. Nothing checks it. A later edit that reached for `performance.now()` inside the loop would compile, lint and pass all 27 cases — the injected clock would simply stop being the only source of time, and the criteria would keep passing because a test's `ManualHost` and a real `performance.now` agree about everything except which one is in control.
+- **Acceptance criteria:**
+  - [ ] A check fails when `core/Loop.ts` names `performance`, `Date`, `requestAnimationFrame` or a DOM global outside a comment
+  - [ ] The check is demonstrated able to fail, per the repository's standing rule, before it is trusted green
+  - [ ] Say plainly whether it tests behaviour or matches text — it matches text, and the honest version says so
+- **Notes:** Filed 2026-09-27 by BL-008. **This is the same shape as BL-077 and BL-079 through BL-084: a rule the repository states and does not check.** Nine sessions running. Two routes: a `no-restricted-globals`/`no-restricted-syntax` override scoped to `core/Loop.ts` in `eslint.config.js`, which is behaviour-adjacent and rides the existing gate; or a source-text assertion in a test, which is what `check-lint-script.ts` does for a neighbouring claim. Prefer the first — the second is a grep, and a grep that lives in a test file is a grep somebody will weaken. **The real prize is the general rule**, not this one file: `sim/` has the same claim and `tools/check-sim-purity.ts` (BL-017) is the item that owns it, so whoever takes this should check whether the two collapse into one gate before building a second.
+
+### BL-088 — The loop is not wired into a composition root, so nothing runs it
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-008, BL-011 · **Docs to read:** 04, 05, 08
+- **Description:** BL-008 delivered `createLoop` and the two browser adapters; `main.ts` still mounts a canvas and a React overlay and nothing else. There is no `Game.ts`, no `World` constructed outside a test, and no frame ever requested in a real browser. Every one of BL-008's criteria is met under `node --test` against a scripted clock, and **none of them has ever been observed against `requestAnimationFrame`.**
+- **Acceptance criteria:**
+  - [ ] `main.ts` (or the `Game.ts` `05` §2 names) constructs a `World` and a `Loop` and starts it
+  - [ ] `browserLoopClock` and `browserFrameScheduler` are exercised by something other than a type
+  - [ ] `sim:timeDropped` is observed at least once in a real browser, by forcing it — a deliberately slow `step`, or a paused tab
+- **Notes:** Filed 2026-09-27 by BL-008, which deliberately stopped short of this: the composition root needs something to draw, and that is **BL-011**. Two things worth knowing before starting. **The adapters are untested and will stay that way until this lands** — they are four lines each and the risk is not their logic, it is that nothing has ever called them. And `04` §4.1's `alpha` only means something once a renderer interpolates with it, so a root that starts a loop and ignores `alpha` has met this item's letter and left its point undone.
 
 ### BL-009 — Service registry and config
 - **Phase:** 0 · **Size:** S · **Depends on:** BL-001 · **Docs:** 05
@@ -463,6 +479,17 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-008 — Fixed-timestep game loop
+- **Completed:** 2026-09-27 · **PR:** — (pushed direct to `main`)
+- `core/Loop.ts` (new), `core/browserFrameHost.ts` (new), `core/Loop.test.ts`, `core/Loop.guards.test.ts`, `core/Loop.testFixtures.ts` (all new). Suite **381 → 408 pass / 0 fail across 97 suites** — 27 new cases, six new files, no existing file touched. `lint`, `typecheck`, `test`, `lint:rules`, `lint:docs` and `build` all clean; `pnpm sim` and `pnpm check:bundle` still do not exist (BL-014, BL-018) and the run is still green, as `AI_DEVELOPMENT_WORKFLOW.md` §6 says to expect.
+- **All three criteria met.** Criterion 1: three rates over the same simulated ten seconds return **300, 300 and 300** steps — asserted equal to each other as well as to the exact answer, because "regardless of render rate" is a claim about two rates at once and a single-rate test would pass on a loop that counted frames and divided. Criterion 2: the frame after a 10-second gap takes exactly `MAX_CATCH_UP_STEPS` and the frame after *that* takes exactly one. Criterion 3: `sim:timeDropped` carries the seconds and both step counts, and a separate case asserts it is **not** emitted on a frame that did not hit the cap — which the criterion as written does not require and an always-firing event would otherwise satisfy.
+- **`04` §4.1's SKETCH LOSES A STEP EVERY TEN SECONDS, AND LOSES IT FASTER THE HIGHER THE FRAME RATE.** This is the item's one real finding and it is criterion 1 that produced it. `acc += delta` accumulates binary64 rounding once per frame: 300 additions of `1000/30` ms sum to `9.999999999999991` and 600 of `1000/60` to `9.999999999999895`, so `floor(sum / DT)` is **299** at both where the true answer is 300. Nothing reports it — no cap, no clamp, no event — and at an hour it is minutes of simulation time gone. The budget is now derived from an absolute base (`epochMs`, `lostMs`) and the three rates agree exactly. **Decision 0041**, which carries the measurement and the four alternatives.
+- **`sim:timeDropped` is the loop's event and does not move into `sim/events/` when that module lands.** **Decision 0042.** Two routes to `world.events` are closed — `EventBus<M>`'s invariance (decision 0025) and the later item's right to design its own map — but the reason that outlives both is that this event is a fact about the *host machine*, and `04` §4.2 plus Phase 7 both need the simulation's event stream to be reproducible.
+- **The clock and the frame scheduler are injected**, which is what makes both of the first two criteria checkable under `node --test` rather than asserted in prose. `core/browserFrameHost.ts` holds the two adapters, split out so that **no browser identifier appears in `Loop.ts` outside its own comments** — a property a reader can grep for. Nothing wires them into `main.ts`: the composition root needs a renderer, which is **BL-011**, and wiring a loop that steps an empty world and draws nothing is scope no criterion asked for.
+- **Eleven mutants were applied, run and reverted, and every one fails at least one case.** Three survived a first pass and **each was a real gap rather than a bad mutant**, which is this item's second finding. (a) The accumulator mutant survived because the first attempt at writing it was not faithful; a correct one fails 2. (b) `start()`'s idempotence was **untestable**, because `ManualHost` held one pending callback and a second `request` overwrote it — the fixture silently merged the two chains of frames a non-idempotent `start` creates. It queues requests now, as `requestAnimationFrame` does, and the case asserts `pendingCount`. (c) Carrying dropped time instead of discarding it was admitted by a ten-frame average of 1.2 steps/frame; the case now asserts the frame immediately after the drop takes exactly one step. **A surviving mutant is a fact about the tests, and twice here it was a fact about the fixture.**
+- **Two bugs the tests found rather than confirmed.** A restarted loop took no step ever again — the budget was `floor(elapsed / DT) - steps` with `elapsed` re-based at the new epoch while `steps` held everything ever run, so the difference was permanently negative and `Math.max(…, 0)` turned a dead loop into silence. And the first backwards-timestamp case used a ten-millisecond jump, which **cannot discriminate**: under one step, the compensating and the naive loop behave identically. A whole second does, because it stalls a naive loop for thirty frames.
+- **Not done, deliberately:** no intent queue (`04` §4.4's is a later item and owns where its drain sits), no `World` or renderer import (`04` §5: `core → (nothing)`), and no `main.ts` change. Discovered work is **BL-087** and **BL-088**.
 
 ### BL-079 — Nothing asserts that `pnpm lint` still runs the format check
 - **Completed:** 2026-09-15 · **PR:** — (pushed direct to `main`)
