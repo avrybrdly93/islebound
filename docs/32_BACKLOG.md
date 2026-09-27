@@ -39,7 +39,9 @@ Current phase: **Phase 0 — Foundation**
 
 ## In Progress
 
-_Nothing in progress._
+### BL-008 — Fixed-timestep game loop
+
+Claimed 2026-09-27. See `33_CURRENT_TASK.md` for the plan and the design decisions taken before the first line of code.
 
 ## Ready — Phase 0: Foundation
 
@@ -170,14 +172,6 @@ _Nothing in progress._
   - [ ] The check is not itself flaky — a guard that fails one run in three is worse than none, because it trains people to re-run
   - [ ] Whatever is chosen, say plainly whether it tests behaviour or only pins a constant
 - **Notes:** Filed 2026-09-26 by BL-078, as a gap its own controls found rather than as a prediction. **The difficulty is stated so nobody rediscovers it:** the documented failure is *one pass in three*, so a behavioural test for it is flaky by construction and a single mutant run cannot demonstrate it either way — which is precisely why BL-078's control came back green and was recorded as a miss rather than counted as a pass. Two routes, both honest: (a) assert the default constants (`warmup === 50_000`, and that 5000 and 200 000 are not it), which pins the value and tests no behaviour — say so if you take it; (b) make the *existing* `assertInstrumentResolvesControl` run over all `repeats` passes rather than over their minimum, so a control that reads 0 in any pass fails. (b) is the real fix and is the reason this is an S rather than a triviality: `attributedBytes` is already a minimum over passes, so the per-pass readings are discarded before any caller sees them, and exposing them is a change to `AttributedAllocation`. Note that (b) would also make BL-074's stray tolerance stricter, so it needs the 20-run check BL-078 used.
-
-### BL-008 — Fixed-timestep game loop
-- **Phase:** 0 · **Size:** M · **Depends on:** BL-059 · **Docs:** 04, 09
-- **Description:** The accumulator loop from `04` §4.1 with a 5-step catch-up cap, tab-switch clamping, interpolation alpha, and per-stage timing instrumentation.
-- **Acceptance criteria:**
-  - [ ] Simulation runs at exactly 30 Hz regardless of render rate (verified at simulated 30/60/144 fps)
-  - [ ] A 10-second tab switch does not produce a burst of catch-up ticks
-  - [ ] `sim:timeDropped` is emitted when the cap is hit
 
 ### BL-009 — Service registry and config
 - **Phase:** 0 · **Size:** S · **Depends on:** BL-001 · **Docs:** 05
