@@ -34,6 +34,142 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-28 — BL-009 The registry, and the config that `core/` is not allowed to load
+
+**Type:** feature
+**Phase:** 0
+**PR:** — (pushed direct to `main`)
+**Time:** ~1h
+
+### What changed
+
+`core/Services.ts` (an explicit, typed service registry), `core/Config.ts` (a
+config store that swaps its snapshot and notifies subscribers),
+`core/viteConfigHost.ts` (the Vite hot-module adapter), and
+`shared/content/config.ts` (the tunables themselves, and the first real
+content table this repository has had), plus `Services.test.ts` and
+`Config.test.ts`. **Six new files, no existing file touched** — the same shape
+BL-008 had, and for the same reason: nothing in this repository calls either
+of these yet.
+
+Suite **408/97 → 430/102**, runtime 4.87 s → 5.08 s. `lint`, `typecheck`,
+`test`, `lint:rules`, `lint:docs` and `build` all clean. No lockfile change.
+
+### Why it was done this way
+
+**The task's first import was a binding conflict, and settling it was the
+task's real content.** `04` §5's table says `core → (nothing)`; `05` §2 says
+`core/Config.ts` holds "tunables, **loaded from content/config.ts**". Written
+literally, the second needs the edge the first forbids. **Decision 0043**:
+`Config.ts` is generic over the config type and loads nothing — the
+composition root passes the values in, and `shared/content/config.ts` declares
+the interface and the object together and imports nothing itself.
+
+That is decision 0041's resolution applied to a second file, which is the
+argument for it rather than a coincidence: BL-008 hit the identical collision
+when `04` §4.1's sketch called `world.step()` and `renderer.render()` inline,
+and answered it by making both calls constructor arguments. **`core/` is the
+layer that knows *how*, not *what*** — that is what an empty allow-list means.
+A boundaries exception was rejected as the **first** hole in a table `04`
+calls binding, argued from a doc sentence that the injected form satisfies
+anyway.
+
+**Criterion 1 is about a message, so it is asserted as one.** "A clear error
+naming the service" is read as two checkable things: the error names the key
+asked for, and it lists what *was* registered. The usual causes of a miss are
+a typo and a root that wired things in the wrong order, and it is the second
+half that tells them apart.
+
+**Criterion 2 is a statement about a bundler, so it was split where it can
+honestly be split.** The mechanism is tested in full against an injected
+source; the Vite wiring is tested for shape only, against a fake hot context.
+That split is written into the test file's own header, not only into this log,
+because a suite that asserted the fake and reported "criterion 2 met" would be
+making a claim about Vite on the evidence of a two-line object.
+
+### Surprises
+
+1. **`05` §2 and `04` §5 contradict each other on this file, and the previous
+   handoff predicted it to the sentence.** That is the surprise worth
+   recording — not that the conflict existed, but that **a handoff written by
+   a session that never touched this task named the exact line it would bite
+   on** ("A config loader in `core/` reading `shared/content/config.ts` is the
+   next place it will come up"). It cost this session nothing to settle
+   because it was settled before the first import rather than after a lint
+   failure. The documentation did not improve here; the handoff did the work.
+   That is worth knowing the next time a handoff makes a specific prediction.
+
+2. **`05` §2's sentence is not wrong, and the first reading of it is.**
+   "Tunables, loaded from `content/config.ts`" is true of the *system* — the
+   values do come from there — and false only as a claim about an import
+   statement. Nothing in `05` needs changing; what needed changing was the
+   assumption that a doc describing where data comes from is describing a
+   module graph. **Neither doc was edited.** A session that "fixes" `05` §2 to
+   say "injected by the composition root" has narrowed a correct sentence into
+   an implementation detail that decision 0043 already owns.
+
+3. **`@typescript-eslint/no-unnecessary-type-parameters` rejected the first
+   `has<K extends keyof M & string>(key: K)`,** because `K` appears once. It
+   is right, and the fix is `has(key: keyof M & string)`, but it is worth
+   knowing that this repository's lint config has an opinion about *generic
+   signatures* and not only about code — the symmetrical-looking
+   `register`/`get`/`has` trio cannot actually be symmetrical, and a reader
+   who "restores consistency" will fail `pnpm lint`.
+
+4. **`node_modules` was absent again — eleventh session running.** The first
+   `pnpm lint` without `pnpm install --frozen-lockfile` fails with
+   `ERR_MODULE_NOT_FOUND` and reads exactly like a broken tree. The handoff
+   said so, and it is still true; this is now a standing property of the
+   container rather than an incident.
+
+5. **No mutant survived, and that is a weaker result than BL-008's, not a
+   stronger one.** BL-008 applied eleven mutants and three survived, each
+   turning out to be a real gap in the suite. Five here, none survived. That
+   says the five chosen were the ones the tests already covered — it does not
+   say the suite has no gaps, and it should not be read in the log as if it
+   did.
+
+### Tests
+
+`Services.test.ts`, 9 cases across 2 suites. Criterion 1 gets four of them:
+the error throws and names the key; it lists what was registered; it says
+"nothing is registered" in words when the registry is empty (the common case,
+a `get` before the root has run); and **a service registered as `undefined`
+does not read as missing**. That last one is the distinguishing case for
+"membership is asked of the map, not of the value" — the obvious
+`if (!entries.get(key)) throw` reports the not-registered error for a service
+somebody did register, which sends the reader looking for a call that is
+already there.
+
+`Config.test.ts`, 13 cases across 3 suites. The store's reload mechanism, the
+notification order, the snapshot's freezing and copying, and the Vite
+adapter's shape. Two cases exist because their absence hides a specific bug:
+**the snapshot is swapped before subscribers run** (a store that notified
+first hands every listener the value it is replacing, and a listener that
+consults `current()` rather than its argument reads the old one), and **the
+snapshot is a copy** (a store holding the caller's reference makes
+`@content/config.ts`'s exported object a mutable handle on a live game's
+config).
+
+**Five mutants applied, run and reverted, every one failing at least one
+case**, per `35` §7: `get` testing the value instead of membership (1 case);
+the error message dropping the registered list (2); notifying before swapping
+the snapshot (1); holding the caller's object instead of a copy (2); the
+adapter forwarding Vite's rejected `undefined` update (1).
+
+**What is not tested, stated rather than implied:** nothing has ever called
+`viteConfigReloadSource` with a real `import.meta.hot`. See BL-089.
+
+### Follow-ups
+
+- **BL-089** — `viteConfigReloadSource` has never run, so criterion 2 is met
+  only against a scripted source. **Check whether it collapses into BL-088
+  before building anything** — both are "an adapter in `core/` that only a
+  composition root can exercise", and doing them together is one wiring pass
+  rather than two.
+
+---
+
 ## 2026-09-27 — BL-008 The fixed-timestep loop, and the step the textbook accumulator loses
 
 **Type:** feature
