@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-089**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-090**.
 
 **Task format:**
 
@@ -189,12 +189,14 @@ _Nothing in progress._
   - [ ] `sim:timeDropped` is observed at least once in a real browser, by forcing it — a deliberately slow `step`, or a paused tab
 - **Notes:** Filed 2026-09-27 by BL-008, which deliberately stopped short of this: the composition root needs something to draw, and that is **BL-011**. Two things worth knowing before starting. **The adapters are untested and will stay that way until this lands** — they are four lines each and the risk is not their logic, it is that nothing has ever called them. And `04` §4.1's `alpha` only means something once a renderer interpolates with it, so a root that starts a loop and ignores `alpha` has met this item's letter and left its point undone.
 
-### BL-009 — Service registry and config
-- **Phase:** 0 · **Size:** S · **Depends on:** BL-001 · **Docs:** 05
-- **Description:** An explicit service registry (no decorators, no magic) and a typed config object loaded from `shared/content/config.ts` with a dev-only hot-reload hook.
+### BL-089 — `viteConfigReloadSource` has never run, so criterion 2 of BL-009 is met only against a scripted source
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-009, BL-088 · **Docs to read:** 04, 05, 08
+- **Description:** BL-009 delivered `core/Config.ts`'s reload mechanism and `core/viteConfigHost.ts`'s Vite adapter. The mechanism is tested in full — a replacement arriving from a source swaps the snapshot and notifies every subscriber, with nothing torn down. **The adapter is tested for shape only**, against a fake `ViteHotContext`: nothing has ever called it with a real `import.meta.hot`, because there is no composition root and nothing consumes a tunable. So "config changes hot-reload in dev without a page refresh" is demonstrated of the store and **assumed of Vite**.
 - **Acceptance criteria:**
-  - [ ] Accessing an unregistered service throws a clear error naming the service
-  - [ ] Config changes hot-reload in dev without a page refresh
+  - [ ] Something constructs a `ConfigStore` from `@content/config.ts`'s `CONFIG` and a real `viteConfigReloadSource(import.meta.hot, …)`
+  - [ ] An edit to `shared/content/config.ts` in `pnpm dev` is observed changing a live value, **without the page reloading** — which means something visible has to be reading a tunable, or the observation is of nothing
+  - [ ] Say plainly what was observed and how, because this item exists because the previous claim was not observable
+- **Notes:** Filed 2026-09-28 by BL-009, which deliberately stopped short. **This is BL-088's shape for the config half and the two may collapse into one item — check that before building anything.** Both are "an adapter in `core/` that only a composition root can exercise", both depend on BL-088's root existing, and doing them together is one wiring pass rather than two. The reason they are filed separately is that BL-088's third criterion needs a *slow frame* and this one needs a *visible tunable*, which are different observations; if BL-088 is taken first and happens to read `tickHz` from the store, this closes with it and should be marked so. **Do not wire `import.meta.hot` into `main.ts` just to tick the first criterion** — with nothing reading a tunable there is nothing to observe changing, and a root that accepts a module and does nothing with it has met the letter and left the point undone, which is the mistake BL-088's own note warns about for `alpha`.
 
 ### BL-010 — Logger with a ring buffer
 - **Phase:** 0 · **Size:** S · **Depends on:** BL-001 · **Docs:** 06, 30
@@ -479,6 +481,17 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-009 — Service registry and config
+- **Completed:** 2026-09-28 · **PR:** — (pushed direct to `main`)
+- `core/Services.ts` (new), `core/Config.ts` (new), `core/viteConfigHost.ts` (new), `shared/content/config.ts` (new — the first real content table, replacing nothing; `_scaffold.ts` stays until a second one lands), plus `core/Services.test.ts` and `core/Config.test.ts` (both new). **Six new files, no existing file touched** — the same shape BL-008 had, and for the same reason: nothing in this repository yet calls either of these. Suite **408 → 430 pass / 0 fail across 102 suites**; runtime 4.87 s → 5.08 s. `lint`, `typecheck`, `test`, `lint:rules`, `lint:docs` and `build` all clean.
+- **THE TASK'S FIRST IMPORT WAS A BINDING CONFLICT, AND IT WAS SETTLED BEFORE ANY CODE.** `04` §5 says **`core → (nothing)`**; `05` §2 says `core/Config.ts` holds "tunables, **loaded from content/config.ts**". **Decision 0043:** `Config.ts` is generic over the config type and loads nothing — the composition root passes the values in, and `shared/content/config.ts` declares the interface and the object together and imports nothing itself. This is decision 0041's resolution applied to a second file: `core/` is the layer that knows *how*, not *what*, which is what an empty allow-list means. The alternative — a boundaries exception — was rejected as the **first** hole in a table `04` calls binding, argued from a doc sentence the injected form satisfies anyway.
+- **Criterion 1 is about a MESSAGE, so it is asserted as one.** "Clear" is read as two checkable things: the error names the key asked for, and it **lists what was registered**. The usual causes are a typo and a root that wired things in the wrong order, and it is the second half that tells them apart; the empty case says "nothing is registered" in words rather than printing an empty list, and the empty case is the common one.
+- **`undefined` is a registered value, not a missing one, and this is the part worth carrying forward.** The obvious implementation, `if (!entries.get(key)) throw`, cannot distinguish "nobody registered `x`" from "somebody registered `x` as `undefined`" and reports the *not-registered* error for the second — sending the reader to the composition root to look for a call that is already there. Membership is asked of the map. A mutant that tests the value fails 1 case.
+- **Criterion 2 is a statement about a BUNDLER, so it was split where it can honestly be split.** The *mechanism* is tested in full: a replacement arriving from an injected `ConfigReloadSource` swaps the snapshot and notifies every subscriber in registration order, with nothing torn down — which is what "without a page refresh" means from the store's side. The *Vite wiring* is tested for **shape only**, against a fake hot context. **Whether Vite calls `accept` with a re-evaluated module in a real browser is not observable from `node --test` and is not claimed.** Filed as **BL-089**. This is the same position `browserFrameHost.ts` has been in since BL-008 and it is written in the test file itself, not only here.
+- **The snapshot is swapped BEFORE subscribers run, and the copy is not an optimisation.** A store that notified first would hand every listener the value it is replacing, so a listener consulting `current()` rather than its argument would read the old one — a bug that survives any test asserting only the argument, and there is a case for it. The snapshot is frozen and is a **copy** of what was passed in, so `@content/config.ts`'s exported object cannot become a mutable handle on a live game's config; a mutant holding the caller's reference fails 2 cases.
+- **Five mutants applied, run and reverted, every one failing at least one case**, per `35` §7: `get` testing the value instead of membership (1); the error message dropping the registered list (2); notifying before swapping the snapshot (1); holding the caller's object instead of a copy (2); the adapter forwarding Vite's rejected `undefined` update (1). No mutant survived, which is a weaker result than BL-008's — there, three survivors were each a real gap. It should not be read as this suite being better.
+- **Not done, deliberately:** nothing is registered in a `Services` anywhere, nothing reads a tunable, and `main.ts` is untouched. `@content/config.ts`'s three values (`tickHz`, `maxCatchUpSteps`, `maxFrameDeltaMs`) are live data with **no consumer** — `Loop.ts` still takes its bounds as arguments, and wiring the two together is BL-088's composition root, not this item's. Registering the loop and the config into a `Services` is the first thing that root should do.
 
 ### BL-008 — Fixed-timestep game loop
 - **Completed:** 2026-09-27 · **PR:** — (pushed direct to `main`)
