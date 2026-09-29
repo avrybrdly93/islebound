@@ -18,7 +18,7 @@ Current phase: **Phase 0 — Foundation**
 
 **For humans:** reorder Ready freely; that ordering is how you steer the project. Add tasks anywhere. Move things to Icebox rather than deleting them.
 
-**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-090**.
+**Task ID format:** `BL-###`, monotonically increasing, never reused. Next free ID: **BL-092**.
 
 **Task format:**
 
@@ -180,6 +180,24 @@ _Nothing in progress._
   - [ ] Say plainly whether it tests behaviour or matches text — it matches text, and the honest version says so
 - **Notes:** Filed 2026-09-27 by BL-008. **This is the same shape as BL-077 and BL-079 through BL-084: a rule the repository states and does not check.** Nine sessions running. Two routes: a `no-restricted-globals`/`no-restricted-syntax` override scoped to `core/Loop.ts` in `eslint.config.js`, which is behaviour-adjacent and rides the existing gate; or a source-text assertion in a test, which is what `check-lint-script.ts` does for a neighbouring claim. Prefer the first — the second is a grep, and a grep that lives in a test file is a grep somebody will weaken. **The real prize is the general rule**, not this one file: `sim/` has the same claim and `tools/check-sim-purity.ts` (BL-017) is the item that owns it, so whoever takes this should check whether the two collapse into one gate before building a second.
 
+### BL-090 — The logger is not registered anywhere, so every future module will reach for `console`
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-010, BL-088 · **Docs to read:** 04, 05, 30
+- **Description:** BL-010 delivered `core/Logger.ts` and `main.ts` constructs one, but it is a module-scope `const` in the entry file and nothing outside that file can reach it. `Services.ts` exists (BL-009) and nothing is registered in it. So the first system that wants to log has exactly two options — import `main.ts` (a cycle) or call `console` directly — and the second is what will happen, silently, because it works.
+- **Acceptance criteria:**
+  - [ ] The logger is registered in a `Services` by the composition root, and at least one module outside `main.ts` gets it from there
+  - [ ] `30` §8's crash context has a named way to reach `snapshot()` — a crash reporter that cannot find the ring attaches nothing
+  - [ ] Say plainly whether anything outside the root actually logs yet; "nothing does" is a permitted answer and is better than a decorative call
+- **Notes:** Filed 2026-09-29 by BL-010, which deliberately stopped short — a logger nobody can reach is BL-088's root to fix, and BL-010's own criteria say nothing about wiring. **This is the third member of the same family**, after BL-088 (the loop) and BL-089 (the config reload source): a thing `core/` provides that only a composition root can put to work. All three should be checked against each other before any of them is built separately. **Do not register it "so something does" without a consumer** — that is the mistake BL-088's note warns about for `alpha`, and a `Services` entry nothing reads is the same shape as a hot module nothing hot-reloads.
+
+### BL-091 — The unit-test suite now runs two Vite builds, and `29` §9 puts that in a different tier
+- **Phase:** 0 · **Size:** S · **Depends on:** BL-010 · **Docs to read:** 29
+- **Description:** `tools/check-debug-stripping.test.ts` (BL-010) spawns a production and a development `vite build` and greps the output, because BL-010's criterion 2 names a bundle grep test as the instrument. It is honest and it is in the wrong tier: `29` §9's table gives `unit` a second-scale budget and puts `vite build` in the **build** tier (≤ 4 min). Measured cost: the suite went **5.08 s → 8.29 s**, a 63% increase, all of it these two builds.
+- **Acceptance criteria:**
+  - [ ] The bundle check runs in whichever tier `29` §9 assigns build output, and the unit tier is back to its own budget
+  - [ ] The check still runs on every change that can break it — moving it somewhere nothing invokes is BL-077's mistake, not a fix
+  - [ ] The measured suite runtime before and after is stated
+- **Notes:** Filed 2026-09-29 by BL-010. **Not fixed inline, and the reason is that the destination does not exist yet:** there is no CI (BL-019), no `pnpm check:bundle` (BL-018) and no Vitest project split (BL-015), so today "a different tier" would mean a script nothing runs — which is exactly the hole BL-077 was filed for. The natural home is **BL-018**'s `check:bundle`, and whoever takes that should pull this in rather than build a second bundle-reading path. Until then the cost is paid on every `pnpm test` and is recorded here so the next session does not rediscover a 3-second regression and go looking for it in the logger.
+
 ### BL-088 — The loop is not wired into a composition root, so nothing runs it
 - **Phase:** 0 · **Size:** S · **Depends on:** BL-008, BL-011 · **Docs to read:** 04, 05, 08
 - **Description:** BL-008 delivered `createLoop` and the two browser adapters; `main.ts` still mounts a canvas and a React overlay and nothing else. There is no `Game.ts`, no `World` constructed outside a test, and no frame ever requested in a real browser. Every one of BL-008's criteria is met under `node --test` against a scripted clock, and **none of them has ever been observed against `requestAnimationFrame`.**
@@ -197,13 +215,6 @@ _Nothing in progress._
   - [ ] An edit to `shared/content/config.ts` in `pnpm dev` is observed changing a live value, **without the page reloading** — which means something visible has to be reading a tunable, or the observation is of nothing
   - [ ] Say plainly what was observed and how, because this item exists because the previous claim was not observable
 - **Notes:** Filed 2026-09-28 by BL-009, which deliberately stopped short. **This is BL-088's shape for the config half and the two may collapse into one item — check that before building anything.** Both are "an adapter in `core/` that only a composition root can exercise", both depend on BL-088's root existing, and doing them together is one wiring pass rather than two. The reason they are filed separately is that BL-088's third criterion needs a *slow frame* and this one needs a *visible tunable*, which are different observations; if BL-088 is taken first and happens to read `tickHz` from the store, this closes with it and should be marked so. **Do not wire `import.meta.hot` into `main.ts` just to tick the first criterion** — with nothing reading a tunable there is nothing to observe changing, and a root that accepts a module and does nothing with it has met the letter and left the point undone, which is the mistake BL-088's own note warns about for `alpha`.
-
-### BL-010 — Logger with a ring buffer
-- **Phase:** 0 · **Size:** S · **Depends on:** BL-001 · **Docs:** 06, 30
-- **Description:** Levelled logging, per-module tags, a 200-entry ring buffer for crash reports, and production stripping of debug/trace levels.
-- **Acceptance criteria:**
-  - [ ] Ring buffer never exceeds its cap
-  - [ ] Debug calls are removed from the production bundle (verified by a bundle grep test)
 
 ### BL-011 — Three.js renderer bootstrap
 - **Phase:** 0 · **Size:** M · **Depends on:** BL-003, BL-008 · **Docs:** 08, 09
@@ -481,6 +492,18 @@ Reviewed at each phase boundary. Moving something out of the Icebox requires a h
 ---
 
 ## Done
+
+### BL-010 — Logger with a ring buffer
+- **Completed:** 2026-09-29 · **PR:** — (pushed to `claude/sharp-lovelace-9tnq46`; see the log entry)
+- `core/Logger.ts` (new), `core/Logger.test.ts` (new), `tools/check-debug-stripping.test.ts` (new), and `main.ts` **modified** — the first session since BL-007 to touch an existing file, because criterion 2 cannot be met without a real debug call in the real entry point. Suite **430 → 451 pass / 0 fail across 107 suites**; runtime 5.08 s → **8.29 s**, all of the increase the two Vite builds (filed as BL-091). `lint`, `typecheck`, `test`, `lint:rules`, `lint:docs` and `build` all clean; `pnpm sim` and `pnpm check:bundle` still do not exist (BL-014, BL-018) and the run is still green.
+- **Criterion 1 is a property of the data structure, not of a check.** A fixed `Array(capacity)` with a wrapping write cursor has nowhere to exceed the cap into; `push` then `if (length > cap) shift()` is correct only for as long as somebody remembers the shift. Asserted at the cap, one past it and **two full wraps past it** — the third is the only one that exercises the modulo on the read path, where an off-by-one shows up as a *rotated* ring rather than an oversized one. A separate case asserts the ring keeps the **newest** lines oldest-first, because a ring that dropped the newest line satisfies the cap and ruins the crash report.
+- **Criterion 2 names its instrument, so BL-009's answer was not available.** BL-009 met a bundler-shaped criterion by injecting the bundler's job and filing the gap (BL-089). "Verified by a bundle grep test" cannot be met that way: it names the production bundle. So `tools/check-debug-stripping.test.ts` runs two real Vite builds, which `pnpm build`'s 1.8 s makes affordable.
+- **THE ONE-SIDED VERSION OF THAT TEST PASSES WHEN THE FEATURE IS ABSENT, AND THAT IS THE ITEM'S FINDING.** "The production bundle does not contain X" is equally true of a `main.ts` with no logging in it, of a grep pointed at the wrong file, and of a build that silently failed — three green tests and a false claim. The check therefore has three parts: the dev-only messages are **parsed out of `main.ts`** rather than copied, and finding none is a failure; a **development** build must contain every one of them; and the production build must contain none while still containing `client booted`, the control that proves the grep can see a string that is there. Decision **0044**.
+- **`vite build --mode development` alone is not a development build**, measured rather than assumed: it emitted a bundle with the same content hash as the production one, because `vite build` defaults `NODE_ENV` to production and Vite reads `import.meta.env.DEV` from both. Setting `NODE_ENV` per arm is what makes the control control; without it the test would have passed with its second part asserting nothing.
+- **`core/Logger.ts` contains no `import.meta` at all**, the same grep-able property `Config.ts` has and for the same reason — `pnpm test` is `node --test`, where reading `.DEV` off `import.meta.env` is a `TypeError` rather than a `false`. The stripping lives at the call site in the composition root, beside the `import.meta.hot` block that was already there.
+- **Tags are views of one shared ring.** `30` §8 attaches "the last 200 log lines" to a crash report — one interleaved history. A tag that owned its own ring would multiply the 200 by the number of modules and make the ordering meaningless.
+- **Four mutants applied, run and reverted, every one failing at least one case**, per `35` §7: an unbounded cursor (2 cases); `snapshot` reading from slot 0 after a wrap (1); a debug call escaping the guard in `main.ts` (the production-bundle case, by name); and deleting the guarded block entirely (the probe case, by name). No mutant survived, which — as BL-009's entry says of its own five — is weaker evidence than a survivor, not stronger.
+- **Not done, deliberately:** nothing registers the logger anywhere and nothing outside `main.ts` can reach it (**BL-090**), and the two builds sit in the unit tier rather than the build tier `29` §9 assigns them (**BL-091**).
 
 ### BL-009 — Service registry and config
 - **Completed:** 2026-09-28 · **PR:** — (pushed direct to `main`)

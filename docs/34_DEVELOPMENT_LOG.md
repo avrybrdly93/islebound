@@ -34,6 +34,114 @@ What was added, and what it protects.
 
 ---
 
+## 2026-09-29 — BL-010 The logger, and the grep test that had to be able to fail
+
+**Type:** feature
+**Phase:** 0
+**PR:** — (pushed to `claude/sharp-lovelace-9tnq46`, not to `main` — see Surprises 5)
+**Time:** ~1h
+
+### What changed
+
+`core/Logger.ts`: levels, per-module tags, a 200-entry ring buffer, an
+injected sink and an injected clock. `core/Logger.test.ts`: 18 cases.
+`main.ts`: constructs the logger and puts two real boot diagnostics inside
+`if (import.meta.env.DEV)`. `tools/check-debug-stripping.test.ts`: three cases
+that run two real Vite builds and grep them. Suite **430 → 451 pass / 0 fail
+across 107 suites**, runtime **5.08 s → 8.29 s**.
+
+**`main.ts` is modified, not just added to, and that is the first time since
+BL-007.** It had to be: criterion 2 is about the production bundle, and a grep
+over a bundle that never contained a debug call proves nothing.
+
+### Why it was done this way
+
+**The ring's cap is structural.** A fixed `Array(capacity)` with a wrapping
+cursor cannot exceed its cap; `push` then `shift()` is correct only while the
+shift is remembered. Criterion 1 is then a property of the data structure
+rather than of a check, which is the difference between a test that passes and
+a test that could not have failed.
+
+**`Logger.ts` contains no `import.meta`.** Same grep-able property `Config.ts`
+has (decision 0043), same reason: `pnpm test` is `node --test`, where
+`import.meta.env` does not exist and reading `.DEV` off it is a `TypeError`.
+The stripping is a call-site decision and lives in the composition root, next
+to the `import.meta.hot` block `main.ts` already had.
+
+**Tags are views of one shared ring** because `30` §8 attaches "the last 200
+log lines" to a crash report — one interleaved history. A ring per tag would
+multiply 200 by the number of modules and destroy the ordering the report
+exists for.
+
+**The bundle test has three parts, and decision 0044 is about why two of them
+are not padding.** The one-assertion version — "the production bundle does not
+contain X" — is equally true of a `main.ts` with no logging, a grep pointed at
+the wrong directory, and a build that silently failed. So the test parses the
+messages *out of* `main.ts` (finding none is a failure), requires a
+development build to keep them, and only then requires the production build to
+have dropped them while still carrying an unguarded message from the same
+file.
+
+### Surprises
+
+1. **`vite build --mode development` is not a development build.** Both arms
+   emitted a bundle with the **same content hash** until `NODE_ENV` was set
+   per arm: `vite build` defaults `NODE_ENV` to `production` and Vite resolves
+   `import.meta.env.DEV` from that as well as from `--mode`. This is the
+   surprise that would have quietly disarmed the control, and it was caught by
+   comparing the two outputs rather than by trusting the flag.
+2. **The obvious version of criterion 2's test is green on a repository that
+   never implemented it.** Worth stating as a general shape rather than as
+   this task's detail: *an assertion that something is absent needs a
+   companion assertion that the instrument can see it when it is present.*
+   Decision 0044.
+3. **The type system got in the way of testing the type system's promise.**
+   `snapshot()` returns `readonly LogRecord[]`, so the case asserting that a
+   caller cannot corrupt the crash context does not compile without a cast —
+   `pnpm typecheck` rejects the test, not the behaviour. The cast is how the
+   caller this case is about would actually reach the array, and it is
+   commented as such.
+4. **`@typescript-eslint/no-empty-function` rejects `() => {}` as a default.**
+   The default sink is a named `noSink` with a comment saying it is finished
+   rather than unfinished, which is the rule's actual point.
+5. **The harness assigned a branch and this repository's CLAUDE.md says push
+   to `main`.** The harness instruction is the stronger of the two — it is
+   addressed to the agent and says never to push elsewhere without explicit
+   permission — so the work is on `claude/sharp-lovelace-9tnq46` and `main`
+   does not have it. **That is a departure from every previous session here
+   and someone has to merge it.** CLAUDE.md's "don't leave long-lived
+   `claude/*` branches around" is the rule this leaves owing.
+
+### Tests
+
+21 new cases. The ring is asserted at the cap, one past it, and **two full
+wraps** past it — only the third exercises the modulo on the read path, where
+an off-by-one shows up as a rotated ring rather than an oversized one — plus
+that it keeps the *newest* lines oldest-first, since a ring dropping the
+newest line satisfies the cap and ruins the report. `isEnabled` is asserted
+consistent with what is actually emitted at every one of the five minimum
+levels, because a call site that trusts the guard to skip expensive argument
+construction is relying on exactly that agreement.
+
+**Four mutants, applied, run and reverted, per `35` §7:** an unbounded cursor
+(2 cases), `snapshot` reading from slot 0 after a wrap (1), a debug call
+escaping the guard in `main.ts` (the production-bundle case, by name), and
+deleting the guarded block (the probe case, by name). None survived — which,
+as BL-009's entry said of its own five, is weaker evidence than a survivor
+rather than stronger.
+
+### Follow-ups
+
+- **BL-090** — nothing registers the logger, so the first system that wants to
+  log will reach for `console`. Third member of the BL-088 / BL-089 family:
+  a thing `core/` provides that only a composition root can put to work.
+- **BL-091** — `pnpm test` now spawns two Vite builds and the suite went
+  5.08 s → 8.29 s. `29` §9 puts `vite build` in the build tier. Not moved
+  today because the destination (BL-018 under BL-019) does not exist, and
+  moving it would mean a check nothing runs.
+
+---
+
 ## 2026-09-28 — BL-009 The registry, and the config that `core/` is not allowed to load
 
 **Type:** feature
