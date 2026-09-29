@@ -88,7 +88,11 @@ describe('Logger ring buffer', () => {
     log.info('a');
 
     const first = log.snapshot();
-    first.length = 0;
+    // `snapshot()` is typed `readonly LogRecord[]`, so the cast is how a
+    // caller who ignored the type would reach the array — which is the caller
+    // this case is about. Without the cast `pnpm typecheck` catches it and
+    // the runtime behaviour goes untested.
+    (first as LogRecord[]).length = 0;
 
     assert.equal(log.snapshot().length, 1);
     assert.notEqual(log.snapshot(), first);
